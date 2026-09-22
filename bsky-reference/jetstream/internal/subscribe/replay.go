@@ -1,0 +1,559 @@
+package subscribe
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"os"
+	"path/filepath"
+	"sync/atomic"
+
+	"github.com/bluesky-social/jetstream/internal/ingest"
+	"github.com/bluesky-social/jetstream/internal/manifest"
+	"github.com/bluesky-social/jetstream/internal/seqspace"
+	"github.com/bluesky-social/jetstream/segment"
+	"github.com/cockroachdb/pebble/vfs"
+)
+
+// WalkInput is the parameter bundle for WalkFromCursor.
+type WalkInput struct {
+	// StartSeq is the smallest seq the walker will emit. Events with
+	// Seq < StartSeq are skipped silently.
+	StartSeq uint64
+
+	// StopSeq, when non-zero, is the exclusive upper bound for cold replay.
+	// Production passes the writer readable-log floor so WalkFromCursor only
+	// serves durable data below that boundary.
+	StopSeq uint64
+
+	// Manifest is the in-memory segment manifest. May be nil; callers
+	// without sealed segments still walk the active segment's flushed region.
+	Manifest *manifest.Manifest
+
+	// Writer is the ingest writer; the walker reads its active segment's
+	// flushed blocks to extend past the sealed-segment region. Required.
+	Writer *ingest.Writer
+
+	// FS is the filesystem used for segment I/O. Nil uses the host OS
+	// filesystem.
+	FS vfs.FS
+
+	// BlockCache, when non-nil, serves sealed-block decodes through the shared
+	// cache instead of decoding directly. Optional; nil preserves direct decode.
+	BlockCache *blockCache
+
+	// Gaps authorizes explicit cursor jumps across durable seq vacancies.
+	Gaps *seqspace.Gaps
+
+	// OnGapJump observes a registered-gap jump. Optional.
+	OnGapJump func(start, end uint64)
+
+	// OnSeamRetry, when non-nil, is invoked once per rotation-seam convergence
+	// retry (each time a sealed+active pass ends below StopSeq and the walk
+	// re-enters the sealed sweep to fill the gap), carrying the seq at which the
+	// gap was observed. Optional; used by tests to drive the seam
+	// deterministically and a natural hook point for a future operator metric
+	// counting how often the cold-read seam is hit.
+	OnSeamRetry func(holeSeq uint64)
+}
+
+// WalkFromCursor invokes emit for every durable event with
+// Seq >= input.StartSeq, in seq order, across:
+//
+//  1. the sealed-segment region from the manifest,
+//  2. the active segment's flushed blocks.
+//
+// Events are delivered as *Entry so sealed-region events served through the
+// shared block cache carry the block's SHARED entries: concurrent cold
+// subscribers replaying the same blocks reuse one memoized JSON encode and
+// one compressed frame per event, exactly like hot (read-log) subscribers
+// (#295). Shared entries (and their events) are read-only. Active-region
+// events and cache-less sealed reads get fresh per-walk entries.
+//
+// Halts when emit returns a non-nil error and surfaces the error
+// (errors.Is is honored).
+//
+// Pure-function design: WalkFromCursor holds no subscriber state. The
+// bounded cold reader (NewColdReader) composes it with a batch limit and
+// the shared block cache to serve Tail's cold-path reads.
+//
+// Cold replay is bounded by StopSeq, the writer readable-log floor. Every seq
+// below StopSeq is durable and file-visible by the readable-log invariant, so
+// the walk must serve the whole [StartSeq, StopSeq) range gap-free.
+//
+// # Rotation-seam convergence
+//
+// The sealed region (manifest) and the active region (writer's active file)
+// are read non-atomically: the walk snapshots the manifest, then reads
+// ActiveIndex. A segment rotation completing BETWEEN the two reads is the
+// hazard. ingest.Writer.rotateLocked does, all under the writer lock:
+//
+//	seal(N) -> publish N to the manifest -> activeIdx = N+1
+//
+// A walker can snapshot the manifest BEFORE N is published (its sealed sweep
+// stops below N's range), then read the active region AFTER activeIdx is
+// bumped to N+1 (an empty or higher-seq successor). N is then reachable via
+// neither source in that pass. A single-pass walk would let the cold reader
+// jump its cursor to StopSeq and silently drop N's events (issue #190).
+//
+// Two properties close the seam:
+//
+//   - No silent loss: walkActiveRegion emits only contiguous seqs from
+//     `current` and stops the instant it sees an event above `current` (a
+//     hole), leaving `current` exactly at the hole. It never jumps past a gap.
+//
+//   - Convergence (no spurious disconnect): a pass that ends below StopSeq
+//     means the floor's data is not yet all served — a seam gap. We re-enter
+//     the sealed sweep, which by the publish-before-bump happens-before now
+//     sees the freshly-published segment(s), so `current` strictly advances.
+//     Events are only ever MOVED active->sealed (compaction preserves each
+//     segment's historical seq envelope), so a below-StopSeq gap is always
+//     fillable. A retry that fails to advance is an invariant violation
+//     (e.g. publish-before-bump broke, or a genuine hole below the floor):
+//     we surface it loudly rather than spin or silently skip.
+func WalkFromCursor(ctx context.Context, input WalkInput, emit func(*Entry) error) error {
+	current := input.StartSeq
+	jumpGap := func() bool {
+		end, ok := input.Gaps.EndContaining(current)
+		if !ok {
+			return false
+		}
+		start := current
+		current = end
+		if input.OnGapJump != nil {
+			input.OnGapJump(start, end)
+		}
+		return true
+	}
+	jumpGap()
+
+	if input.Manifest == nil {
+		// There is no rotation seam to converge without a manifest. Re-enter the
+		// active file only when a registered vacancy explains the hole. A bounded
+		// replay still promises complete coverage up to StopSeq, so an unexplained
+		// hole must fail loud here just as it does in the manifest-backed path.
+		for {
+			next, err := walkActiveRegion(input, current, emit)
+			if err != nil {
+				return err
+			}
+			current = next
+			if jumpGap() {
+				continue
+			}
+			if input.StopSeq != 0 && current < input.StopSeq {
+				return fmt.Errorf("subscribe: cold replay made no progress at seq %d before readable-log floor %d (unregistered sequence hole)", current, input.StopSeq)
+			}
+			return nil
+		}
+	}
+
+	if err := input.Manifest.Wait(ctx); err != nil {
+		return err
+	}
+
+	// noProgress counts consecutive passes that neither advanced current nor
+	// reached StopSeq. ONE such pass is expected at a live seam: the pass read
+	// the manifest BEFORE the just-sealed segment N was published, then observed
+	// the bumped activeIdx (empty/higher successor) — so it could serve N from
+	// neither source. The publish-before-bump happens-before then guarantees the
+	// NEXT pass's fresh manifest read contains N, so a second consecutive
+	// no-progress pass means the gap is not a transient seam: a real hole below
+	// a floor that promised durable data, or the ordering invariant broke. Fail
+	// loud rather than spin or silently jump the cursor past durable events.
+	noProgress := 0
+	for {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		if jumpGap() && input.StopSeq != 0 && current >= input.StopSeq {
+			return nil
+		}
+		passStart := current
+
+		next, err := walkSealedRegion(ctx, input, current, emit)
+		if err != nil {
+			return err
+		}
+		current = next
+		// A registered vacancy between sealed and active coverage is durable
+		// progress, not a rotation seam. Jump before entering the active sweep
+		// so the active reader can continue at the first post-gap event in this
+		// same pass.
+		jumpGap()
+
+		// activeIdx is read fresh inside walkActiveRegion each pass, so a
+		// rotation since the last pass moves us onto the new active file and
+		// the just-sealed file is recovered by the next sealed sweep.
+		next, err = walkActiveRegion(input, current, emit)
+		if err != nil {
+			return err
+		}
+		current = next
+		if jumpGap() {
+			if input.StopSeq != 0 && current >= input.StopSeq {
+				return nil
+			}
+			// The active file may contain durable blocks on both sides of a crash
+			// vacancy. Re-enter both regions at the authorized end without
+			// reporting a seam retry; a subsequent unexplained hole still takes
+			// the no-progress path below and fails loud.
+			continue
+		}
+
+		// With no StopSeq boundary the walk is unbounded (lenient), so one
+		// sealed+active pass is the whole contract.
+		if input.StopSeq == 0 || current >= input.StopSeq {
+			return nil
+		}
+
+		// The pass ended below StopSeq: re-enter the sealed sweep to fill the
+		// gap the active sweep could not serve.
+		if input.OnSeamRetry != nil {
+			input.OnSeamRetry(current)
+		}
+		if current == passStart {
+			noProgress++
+			if noProgress >= 2 {
+				return fmt.Errorf("subscribe: cold replay made no progress at seq %d "+
+					"before readable-log floor %d (rotation seam invariant violated)",
+					current, input.StopSeq)
+			}
+		} else {
+			noProgress = 0
+		}
+	}
+}
+
+// walkSealedRegion emits every event with Seq >= start that resides in the
+// manifest's sealed segments, in seq order, and returns the next unemitted
+// seq. Only invoked when input.Manifest != nil.
+func walkSealedRegion(ctx context.Context, input WalkInput, start uint64, emit func(*Entry) error) (uint64, error) {
+	current := start
+	for {
+		if err := ctx.Err(); err != nil {
+			return current, err
+		}
+		if input.StopSeq != 0 && current >= input.StopSeq {
+			return current, nil
+		}
+		bounds, ok := input.Manifest.SegmentForSeq(current)
+		if !ok {
+			return current, nil
+		}
+		next, err := walkSealedSegment(input.Manifest, input.FS, bounds, current, input.StopSeq, input.BlockCache, input.Gaps, input.OnGapJump, emit)
+		if err != nil {
+			return current, err
+		}
+		if next <= bounds.MaxSeq {
+			// The segment was fully scanned and emitted nothing at or
+			// above next. Compaction preserves a segment's historical seq
+			// envelope while dropping rows, so the trailing seqs up to
+			// bounds.MaxSeq may simply no longer exist; without this bump
+			// SegmentForSeq would return the same segment forever and the
+			// walk would spin.
+			next = bounds.MaxSeq + 1
+		}
+		current = next
+	}
+}
+
+// walkActiveRegion emits events with Seq >= start from the active segment's
+// flushed blocks, in seq order, and returns the next unemitted seq.
+//
+// A concurrent seal of the active file is benign: the writer snapshot provides
+// an exact end offset before any footer, and Seal never rewrites frame bytes.
+// If the range opens after the header is finalized it returns ErrSegmentSealed;
+// with a manifest the outer convergence loop re-enters the freshly published
+// sealed region. Without a manifest there is no second source to converge on,
+// so a sealed-or-missing active file propagates loud — swallowing it would let
+// the cold reader silently jump its cursor past the sealed events.
+func walkActiveRegion(input WalkInput, start uint64, emit func(*Entry) error) (next uint64, err error) {
+	current := start
+
+	// emitErr captures an error returned by the CALLER's emit (including the
+	// cold reader's errBatchFull control signal). It is kept distinct from a
+	// WalkActive I/O/decode error so the former propagates verbatim while only
+	// the latter is wrapped as "walk active".
+	var emitErr error
+
+	// emitOne applies the skip/emit decision for a single event.
+	emitOne := func(ev *segment.Event) (stop bool) {
+		switch {
+		case ev.Seq < current:
+			return false // already emitted or below start
+		case input.StopSeq != 0 && current >= input.StopSeq:
+			return true // served up to the floor
+		case input.StopSeq != 0 && ev.Seq >= input.StopSeq:
+			return true // reached the floor boundary
+		case input.StopSeq != 0 && ev.Seq > current:
+			// A hole below the floor: the active file's next visible event
+			// skips past `current`. This is the rotation seam — a just-sealed
+			// segment holds [current, ev.Seq) but is not in our manifest
+			// snapshot yet. Stop cleanly with current UNCHANGED (never jump the
+			// gap); WalkFromCursor re-sweeps the sealed region to fill it, or
+			// fails loud if a full pass cannot advance. Checked AFTER the
+			// boundary cases above so a hole whose next event sits at/above the
+			// floor is not misclassified — it stops at the floor either way,
+			// and the below-floor gap is still caught by WalkFromCursor's
+			// no-progress guard.
+			return true
+		default:
+			// Active-region entries are per-walk: the active tail is thin
+			// relative to a deep replay and its events are only immutable per
+			// flushed block, so sharing machinery isn't worth the bookkeeping.
+			cp := *ev
+			if e := emit(newEntry(&cp)); e != nil {
+				emitErr = e
+				return true
+			}
+			current = ev.Seq + 1
+			return false
+		}
+	}
+
+	rng, ok := input.Writer.ActiveFlushedRange(current)
+	if !ok {
+		return current, nil
+	}
+	activePath := filepath.Join(input.Writer.SegmentsDir(), ingest.SegmentFilename(rng.Index))
+	walkErr := segment.WalkActiveRangeFS(input.FS, activePath, rng.StartOffset, rng.EndOffset, func(events []segment.Event) error {
+		for i := range events {
+			if emitOne(&events[i]) {
+				return errStopWalk
+			}
+		}
+		return nil
+	})
+	switch {
+	case emitErr != nil:
+		// Caller's emit error/control signal: propagate verbatim.
+		return current, emitErr
+	case errors.Is(walkErr, errStopWalk):
+		return current, nil
+	case walkErr == nil:
+		return current, nil
+	case input.Manifest != nil &&
+		(errors.Is(walkErr, os.ErrNotExist) || errors.Is(walkErr, segment.ErrSegmentSealed)):
+		// Rotation seam: the snapshotted generation was sealed (or renamed
+		// away) between the range snapshot and the open. The sealed sweep's
+		// fresh manifest read serves it next pass; the no-progress guard in
+		// WalkFromCursor fails loud if it never appears.
+		return current, nil
+	default:
+		return current, fmt.Errorf("walk active: %w", walkErr)
+	}
+}
+
+// errStopWalk is an internal sentinel used to halt segment.WalkActive. It never
+// escapes walkActiveRegion.
+var errStopWalk = errors.New("subscribe: stop active walk")
+
+// decodeSealedBlock returns the block's events wrapped as entries. With a
+// cache the entries are the block's SHARED entries (memoized encodes and
+// compressed frames are reused across every cold subscriber); without one
+// they are fresh per-call wrappers over a private decode.
+func decodeSealedBlock(cache *blockCache, segIdx uint64, blockIdx int, r *segment.Reader) ([]*Entry, error) {
+	if cache == nil {
+		events, err := r.DecodeBlock(blockIdx)
+		if err != nil {
+			return nil, err
+		}
+		entries := make([]*Entry, len(events))
+		for i := range events {
+			entries[i] = newEntry(&events[i])
+		}
+		return entries, nil
+	}
+	return cache.getOrDecode(
+		cache.keyForBlock(segIdx, r.Header().Checksum, blockIdx),
+		func() ([]segment.Event, error) { return r.DecodeBlock(blockIdx) },
+	)
+}
+
+// walkSealedSegment mixes the MANIFEST's block index (iteration order,
+// seq-bound skip decisions) with offsets from the freshly-opened file.
+// That mixing is safe across compaction rewrites ONLY because Rewrite
+// preserves block topology and historical seq envelopes (block numbers
+// stable, manifest bounds valid supersets). Block repacking — merging
+// thinned blocks — must migrate this call site (or generation-check
+// the manifest entry) first.
+func walkSealedSegment(m *manifest.Manifest, fs vfs.FS, bounds manifest.SegmentBounds, current uint64, stopSeq uint64, cache *blockCache, gaps *seqspace.Gaps, onGapJump func(start, end uint64), emit func(*Entry) error) (uint64, error) {
+	blocks, err := m.BlockIndex(bounds.Idx)
+	if err != nil {
+		return current, fmt.Errorf("block index for seg %d: %w", bounds.Idx, err)
+	}
+
+	r, err := segment.Open(segment.ReaderConfig{Path: bounds.Path, FS: fs, SkipChecksum: true})
+	if err != nil {
+		return current, fmt.Errorf("open seg %d: %w", bounds.Idx, err)
+	}
+	defer func() { _ = r.Close() }()
+
+	for i, block := range blocks {
+		if stopSeq != 0 && current >= stopSeq {
+			return current, nil
+		}
+		if block.MaxSeq < current {
+			continue
+		}
+		// Compaction may remove rows inside a block, but it preserves that
+		// block's historical [MinSeq, MaxSeq] envelope. It cannot explain a
+		// hole between two block envelopes. Crash-abandoned leases occur exactly
+		// at such block boundaries and may be crossed only when the durable gap
+		// registry authorizes the jump.
+		if end, ok := gaps.EndContaining(current); ok {
+			start := current
+			current = end
+			if onGapJump != nil {
+				onGapJump(start, end)
+			}
+			if stopSeq != 0 && current >= stopSeq {
+				return current, nil
+			}
+			if block.MaxSeq < current {
+				continue
+			}
+		}
+		if block.MinSeq > current {
+			if stopSeq != 0 && current < stopSeq {
+				return current, fmt.Errorf("subscribe: unregistered sequence hole [%d,%d) between durable blocks in segment %d", current, block.MinSeq, bounds.Idx)
+			}
+			// Unbounded callers retain the historical compaction/replay behavior:
+			// emit every extant row without asserting complete coverage to a floor.
+			current = block.MinSeq
+		}
+		entries, err := decodeSealedBlock(cache, bounds.Idx, i, r)
+		if err != nil {
+			return current, fmt.Errorf("decode seg %d block %d: %w", bounds.Idx, i, err)
+		}
+		for _, e := range entries {
+			seq := e.Event.Seq
+			if seq < current {
+				continue
+			}
+			if stopSeq != 0 && seq >= stopSeq {
+				return current, nil
+			}
+			if err := emit(e); err != nil {
+				return current, err
+			}
+			current = seq + 1
+		}
+		if current <= block.MaxSeq {
+			if block.MaxSeq == ^uint64(0) {
+				return current, fmt.Errorf("subscribe: segment %d block %d max seq overflows replay cursor", bounds.Idx, i)
+			}
+			current = block.MaxSeq + 1
+			if stopSeq != 0 && current > stopSeq {
+				current = stopSeq
+			}
+		}
+	}
+	return current, nil
+}
+
+// DefaultBlockCacheBytes bounds the shared decoded-block cache for the cold
+// (disk replay) path. Operator-tunable via --subscribe-block-cache-bytes.
+const DefaultBlockCacheBytes = 64 << 20
+
+// ColdReaderConfig wires the cold (disk) read path. The writer is held by
+// reference (atomic.Pointer) because cmd/jetstream publishes it after
+// steady-state begins; before then a cold read returns errColdUnavailable.
+type ColdReaderConfig struct {
+	Manifest        *manifest.Manifest
+	WriterRef       *atomic.Pointer[ingest.Writer]
+	FS              vfs.FS
+	BlockCacheBytes int // 0 -> DefaultBlockCacheBytes
+	Metrics         *Metrics
+}
+
+// errBatchFull is the sentinel the bounded collector returns to stop the
+// walk once max entries are gathered. Never escapes ColdReader.Read.
+var errBatchFull = errors.New("subscribe: cold batch full")
+
+// ColdReader serves bounded cold-path reads from disk and owns the decoded
+// block cache shared by those reads.
+type ColdReader struct {
+	manifest  *manifest.Manifest
+	writerRef *atomic.Pointer[ingest.Writer]
+	cache     *blockCache
+	fs        vfs.FS
+	metrics   *Metrics
+}
+
+// NewColdReader returns a ColdReader that serves bounded batches from disk
+// via WalkFromCursor, routing sealed-block decodes through a shared, byte-
+// bounded block cache. Read stops after max events and reports the next cursor
+// so the subscriber loop resumes contiguously.
+func NewColdReader(cfg ColdReaderConfig) *ColdReader {
+	bytes := cfg.BlockCacheBytes
+	if bytes <= 0 {
+		bytes = DefaultBlockCacheBytes
+	}
+	return &ColdReader{
+		manifest:  cfg.Manifest,
+		writerRef: cfg.WriterRef,
+		cache:     newBlockCache(bytes),
+		fs:        cfg.FS,
+		metrics:   cfg.Metrics,
+	}
+}
+
+// InvalidateSegment purges decoded blocks for segIdx from the cold read cache.
+func (r *ColdReader) InvalidateSegment(idx uint64) {
+	if r == nil || r.cache == nil {
+		return
+	}
+	r.cache.invalidateSegment(idx)
+}
+
+// Read serves a bounded batch from disk, stopping after max entries and
+// returning the next cursor so the subscriber loop resumes contiguously.
+func (r *ColdReader) Read(ctx context.Context, cursor uint64, max int) ([]*Entry, uint64, error) {
+	if r == nil || r.writerRef == nil {
+		return nil, cursor, errColdUnavailable
+	}
+	w := r.writerRef.Load()
+	if w == nil {
+		return nil, cursor, errColdUnavailable
+	}
+	batch := make([]*Entry, 0, max)
+	next := cursor
+	floor := w.ReadLog().FloorSeq()
+	var onGapJump func(start, end uint64)
+	if r.metrics != nil {
+		onGapJump = r.metrics.incGapJump
+	}
+	err := WalkFromCursor(ctx, WalkInput{
+		StartSeq:   cursor,
+		StopSeq:    floor,
+		Manifest:   r.manifest,
+		Writer:     w,
+		FS:         r.fs,
+		BlockCache: r.cache,
+		Gaps:       w.SeqGaps(),
+		OnGapJump:  onGapJump,
+	}, func(e *Entry) error {
+		// Sealed-region entries arrive SHARED from the block cache (the #295
+		// fix: concurrent cold subscribers reuse one memoized encode and one
+		// compressed frame per event, like the hot path); active-region
+		// entries are per-walk. Either way they are appended as-is.
+		if floor > 0 && e.Event.Seq >= floor {
+			return errBatchFull
+		}
+		batch = append(batch, e)
+		next = e.Event.Seq + 1
+		if len(batch) >= max {
+			return errBatchFull
+		}
+		return nil
+	})
+	if err != nil && !errors.Is(err, errBatchFull) {
+		return nil, cursor, err
+	}
+	if len(batch) == 0 && floor > cursor {
+		next = floor
+	}
+	return batch, next, nil
+}

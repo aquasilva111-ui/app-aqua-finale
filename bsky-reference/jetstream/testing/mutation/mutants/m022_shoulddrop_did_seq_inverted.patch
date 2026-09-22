@@ -1,0 +1,28 @@
+mutant: m022_shoulddrop_did_seq_inverted
+target: internal/tombstone/tombstone.go
+failure-mode: |
+  ShouldDrop inverts the DID-tombstone seq comparison (> becomes <), so
+  account-delete/sync tombstones suppress the wrong rows: superseded
+  records survive and live records get dropped.
+expected-detection: |
+  tombstone tier: TestSnapshotShouldDropDIDChainsWithSpecificReason asserts
+  ShouldDrop in BOTH seq directions (a row below the DID tombstone seq is
+  dropped; a reactivation row above it survives), so the inversion fails the
+  unit suite. The overlay-reconstruction oracle that previously killed it was
+  deleted with internal/overlay in #177; this tier (#184) restores the gate.
+expected-tier: tombstone
+tiers: tombstone
+
+diff --git a/internal/tombstone/tombstone.go b/internal/tombstone/tombstone.go
+index 7ef135e..d8287e7 100644
+--- a/internal/tombstone/tombstone.go
++++ b/internal/tombstone/tombstone.go
+@@ -173,7 +173,7 @@ func (s Snapshot) ShouldDrop(ev *segment.Event) (bool, string) {
+ 	if !ev.Kind.IsMaterialization() {
+ 		return false, ""
+ 	}
+-	if ts, ok := s.DIDs[ev.DID]; ok && ts.Seq > ev.Seq {
++	if ts, ok := s.DIDs[ev.DID]; ok && ts.Seq < ev.Seq {
+ 		return true, ts.Reason
+ 	}
+ 	key := RecordKey{DID: ev.DID, Collection: ev.Collection, Rkey: ev.Rkey}

@@ -1,0 +1,250 @@
+'use client'
+
+import { Fragment, createContext, useContext, useState } from 'react'
+import Link from 'next/link'
+import { usePathname } from 'next/navigation'
+import {
+  Dialog,
+  DialogPanel,
+  Transition,
+  TransitionChild,
+} from '@headlessui/react'
+import { Bars3BottomLeftIcon, XMarkIcon } from '@heroicons/react/24/outline'
+import { classNames } from '@/lib/util'
+import { ICONS, isCurrent, useNavItems } from './common'
+import Image from 'next/image'
+import { useKBar } from 'kbar'
+
+interface MobileMenuOpen {
+  open: boolean
+  set: (v: boolean) => void
+}
+const MobileMenuOpenCtx = createContext<MobileMenuOpen>({
+  open: false,
+  set: (v: boolean) => {},
+})
+
+export function MobileMenuProvider({ children }: React.PropsWithChildren) {
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
+  const value = { open: mobileMenuOpen, set: setMobileMenuOpen }
+  return (
+    <MobileMenuOpenCtx.Provider value={value}>
+      {children}
+    </MobileMenuOpenCtx.Provider>
+  )
+}
+
+export function MobileMenuBtn() {
+  const mobileMenuOpen = useContext(MobileMenuOpenCtx)
+  return (
+    <button
+      type="button"
+      className="border-r border-gray-200 px-4 text-gray-500 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-rose-500 md:hidden"
+      onClick={() => mobileMenuOpen.set(true)}
+    >
+      <span className="sr-only">Open sidebar</span>
+      <Bars3BottomLeftIcon className="h-6 w-6" aria-hidden="true" />
+    </button>
+  )
+}
+
+export function MobileMenu() {
+  const pathname = usePathname() || '/'
+  const navItems = useNavItems()
+  const mobileMenuOpen = useContext(MobileMenuOpenCtx)
+  const kbar = useKBar()
+  return (
+    <>
+      {/* Mobile menu */}
+      <Transition show={mobileMenuOpen.open} as={Fragment}>
+        <Dialog
+          as="div"
+          className="relative z-20 md:hidden"
+          onClose={mobileMenuOpen.set}
+        >
+          <TransitionChild
+            as={Fragment}
+            enter="transition-opacity ease-linear duration-300"
+            enterFrom="opacity-0"
+            enterTo="opacity-100"
+            leave="transition-opacity ease-linear duration-300"
+            leaveFrom="opacity-100"
+            leaveTo="opacity-0"
+          >
+            <div className="fixed inset-0 bg-gray-600 bg-opacity-75" />
+          </TransitionChild>
+
+          <div className="fixed inset-0 z-40 flex">
+            <TransitionChild
+              as={Fragment}
+              enter="transition ease-in-out duration-300 transform"
+              enterFrom="-translate-x-full"
+              enterTo="translate-x-0"
+              leave="transition ease-in-out duration-300 transform"
+              leaveFrom="translate-x-0"
+              leaveTo="-translate-x-full"
+            >
+              <DialogPanel className="relative flex w-full max-w-xs flex-1 flex-col bg-rose-700 dark:bg-teal-700 pt-5 pb-4">
+                <TransitionChild
+                  as={Fragment}
+                  enter="ease-in-out duration-300"
+                  enterFrom="opacity-0"
+                  enterTo="opacity-100"
+                  leave="ease-in-out duration-300"
+                  leaveFrom="opacity-100"
+                  leaveTo="opacity-0"
+                >
+                  <div className="absolute top-1 right-0 -mr-14 p-1">
+                    <button
+                      type="button"
+                      className="flex h-12 w-12 items-center justify-center rounded-full focus:outline-none focus:ring-2 focus:ring-white"
+                      onClick={() => mobileMenuOpen.set(false)}
+                    >
+                      <XMarkIcon
+                        className="h-6 w-6 text-white"
+                        aria-hidden="true"
+                      />
+                      <span className="sr-only">Close sidebar</span>
+                    </button>
+                  </div>
+                </TransitionChild>
+                <div className="flex flex-shrink-0 items-center px-4">
+                  <Image
+                    width={200}
+                    height={200}
+                    title="Icon from Flaticon: https://www.flaticon.com/free-icons/lifeguard-tower"
+                    className="h-8 w-auto"
+                    src="/img/logo-white.png"
+                    alt="Ozone - ATProto Moderation Service"
+                  />
+                </div>
+                <div className="mt-5 h-0 flex-1 overflow-y-auto px-2">
+                  <nav className="flex h-full flex-col">
+                    <div className="space-y-1">
+                      {navItems.map((item) => {
+                        const Icon = ICONS[item.icon]
+                        const active = isCurrent(pathname, item)
+                        const activeClass = active
+                          ? 'bg-rose-800 dark:bg-teal-800 text-white'
+                          : 'text-rose-100 dark:text-teal-100 hover:bg-rose-800 dark:hover:bg-teal-800 hover:text-white'
+                        const iconEl = (
+                          <Icon
+                            className={classNames(
+                              active
+                                ? 'text-white'
+                                : 'text-rose-300 dark:text-teal-300 group-hover:text-white',
+                              'mr-3 h-6 w-6',
+                            )}
+                            aria-hidden="true"
+                          />
+                        )
+
+                        if ('children' in item) {
+                          return (
+                            <div key={item.name}>
+                              <div
+                                className={classNames(
+                                  activeClass,
+                                  'group py-2 px-3 rounded-md flex items-center text-sm font-medium',
+                                )}
+                              >
+                                {iconEl}
+                                <span>{item.name}</span>
+                              </div>
+                              <div className="mt-1 space-y-1">
+                                {item.children.map((child) => {
+                                  const ChildIcon = ICONS[child.icon]
+                                  const childActive = isCurrent(pathname, child)
+                                  return (
+                                    <Link
+                                      key={child.name}
+                                      href={child.href}
+                                      onClick={() => mobileMenuOpen.set(false)}
+                                      className={classNames(
+                                        childActive
+                                          ? 'bg-rose-800 dark:bg-teal-800 text-white'
+                                          : 'text-rose-100 dark:text-teal-100 hover:bg-rose-800 dark:hover:bg-teal-800 hover:text-white',
+                                        'group py-2 pl-10 pr-3 rounded-md flex items-center text-sm font-medium',
+                                      )}
+                                      aria-current={
+                                        childActive ? 'page' : undefined
+                                      }
+                                    >
+                                      <ChildIcon
+                                        className={classNames(
+                                          childActive
+                                            ? 'text-white'
+                                            : 'text-rose-300 dark:text-teal-300 group-hover:text-white',
+                                          'mr-3 h-5 w-5',
+                                        )}
+                                        aria-hidden="true"
+                                      />
+                                      <span>{child.name}</span>
+                                    </Link>
+                                  )
+                                })}
+                              </div>
+                            </div>
+                          )
+                        }
+
+                        const children = (
+                          <>
+                            {iconEl}
+                            <span>{item.name}</span>
+                            {item.badge && (
+                              <span className="ml-2 rounded-full bg-yellow-400 px-1.5 py-px text-[10px] font-semibold uppercase leading-none text-yellow-900">
+                                {item.badge}
+                              </span>
+                            )}
+                          </>
+                        )
+                        if ('href' in item) {
+                          return (
+                            <Link
+                              key={item.name}
+                              href={item.href}
+                              onClick={() => mobileMenuOpen.set(false)}
+                              className={classNames(
+                                activeClass,
+                                'group py-2 px-3 rounded-md flex items-center text-sm font-medium',
+                              )}
+                              aria-current={active ? 'page' : undefined}
+                            >
+                              {children}
+                            </Link>
+                          )
+                        }
+
+                        return (
+                          <button
+                            key={item.name}
+                            className={classNames(
+                              active
+                                ? 'bg-rose-800 text-white'
+                                : 'text-rose-100 hover:bg-rose-800 hover:text-white',
+                              'group py-2 px-3 rounded-md flex items-center text-sm font-medium',
+                            )}
+                            onClick={(e) => {
+                              mobileMenuOpen.set(false)
+                              if ('onClick' in item) item.onClick({ kbar })?.(e)
+                            }}
+                          >
+                            {children}
+                          </button>
+                        )
+                      })}
+                    </div>
+                  </nav>
+                </div>
+              </DialogPanel>
+            </TransitionChild>
+            <div className="w-14 flex-shrink-0" aria-hidden="true">
+              {/* Dummy element to force sidebar to shrink to fit close icon */}
+            </div>
+          </div>
+        </Dialog>
+      </Transition>
+    </>
+  )
+}

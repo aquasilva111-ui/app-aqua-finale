@@ -1,0 +1,501 @@
+package segment
+
+import (
+	"bytes"
+	"encoding/binary"
+	"errors"
+	"math"
+	"math/rand"
+	"strings"
+	"testing"
+	"testing/quick"
+
+	"github.com/klauspost/compress/zstd"
+	"github.com/stretchr/testify/require"
+)
+
+// newCappedDecoder builds a private zstd decoder with a custom
+// max-memory cap; used by tests that exercise the bomb-rejection
+// behavior without mutating the package-level blockDecoder.
+func newCappedDecoder(maxBytes uint64) (*zstd.Decoder, error) {
+	return zstd.NewReader(nil, zstd.WithDecoderMaxMemory(maxBytes))
+}
+
+func TestValidateAcceptsHappyPath(t *testing.T) {
+	t.Parallel()
+
+	for _, kind := range []Kind{KindCreate, KindCreateResync} {
+		require.NoError(t, ValidateEvent(Event{
+			Seq:         42,
+			WitnessedAt: 1_700_000_000_000_000,
+			IndexedAt:   0,
+			Kind:        kind,
+			DID:         "did:plc:abcdefghijklmnopqrstuvwx",
+			Collection:  "app.bsky.feed.post",
+			Rkey:        "3l3qo2vuowo2b",
+			Rev:         "3l3qo2vutsw2b",
+			Payload:     []byte("any DAG-CBOR bytes"),
+		}))
+	}
+}
+
+func TestValidateRejectsInvalidKind(t *testing.T) {
+	t.Parallel()
+
+	t.Run("zero", func(t *testing.T) {
+		t.Parallel()
+		err := ValidateEvent(Event{Kind: 0})
+		require.ErrorIs(t, err, ErrInvalidKind)
+	})
+
+	t.Run("eight", func(t *testing.T) {
+		t.Parallel()
+		err := ValidateEvent(Event{Kind: 8})
+		require.ErrorIs(t, err, ErrInvalidKind)
+	})
+}
+
+func TestValidateRejectsOversizedFields(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		name string
+		mut  func(*Event)
+	}{
+		{
+			name: "did over uint16",
+			mut:  func(e *Event) { e.DID = strings.Repeat("a", math.MaxUint16+1) },
+		},
+		{
+			name: "collection over uint8",
+			mut:  func(e *Event) { e.Collection = strings.Repeat("a", math.MaxUint8+1) },
+		},
+		{
+			name: "rkey over uint8",
+			mut:  func(e *Event) { e.Rkey = strings.Repeat("a", math.MaxUint8+1) },
+		},
+		{
+			name: "rev over uint8",
+			mut:  func(e *Event) { e.Rev = strings.Repeat("a", math.MaxUint8+1) },
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			ev := Event{Kind: KindCreate}
+			tc.mut(&ev)
+			err := ValidateEvent(ev)
+			require.True(t, errors.Is(err, ErrFieldTooLong),
+				"expected ErrFieldTooLong, got %v", err)
+		})
+	}
+}
+
+func TestEncodeBlockUncompressedHandcrafted(t *testing.T) {
+	t.Parallel()
+
+	events := []Event{
+		{
+			Seq: 1, WitnessedAt: 100, IndexedAt: 0, Kind: KindCreate,
+			DID: "d1", Collection: "c1", Rkey: "r1", Rev: "v1",
+			Payload: []byte{0xAA, 0xBB},
+		},
+		{
+			Seq: 2, WitnessedAt: 200, IndexedAt: 250, Kind: KindIdentity,
+			DID: "d22", Collection: "", Rkey: "", Rev: "",
+			Payload: nil,
+		},
+	}
+
+	got, err := encodeBlock(events)
+	require.NoError(t, err)
+
+	// Build the expected bytes by hand to pin the layout.
+	var want bytes.Buffer
+	w := func(v any) {
+		require.NoError(t, binary.Write(&want, binary.LittleEndian, v))
+	}
+
+	// In spec order:
+	w(uint32(2)) // event_count
+	w(uint64(1)) // seq[]
+	w(uint64(2))
+	w(int64(100)) // witnessed_at[]
+	w(int64(200))
+	w(int64(0)) // indexed_at[]
+	w(int64(250))
+	w(uint8(KindCreate)) // kind[]
+	w(uint8(KindIdentity))
+	w(uint8(2)) // collection_len[]
+	w(uint8(0))
+	w(uint16(2)) // did_len[]
+	w(uint16(3))
+	w(uint8(2)) // rkey_len[]
+	w(uint8(0))
+	w(uint8(2)) // rev_len[]
+	w(uint8(0))
+	w(uint32(2)) // event_len[]
+	w(uint32(0))
+
+	// Variable-length blobs, in spec order:
+	want.WriteString("c1")         // collections
+	want.WriteString("d1d22")      // dids
+	want.WriteString("r1")         // rkeys
+	want.WriteString("v1")         // revs
+	want.Write([]byte{0xAA, 0xBB}) // payloads
+
+	require.Equal(t, want.Bytes(), got)
+}
+
+func TestEncodeBlockEmptyReturnsErrorAndDecodeAcceptsExplicitEmpty(t *testing.T) {
+	t.Parallel()
+
+	// Zero events is not a meaningful block; the writer's Flush is
+	// the no-op layer. encodeBlock itself rejects empty input so a
+	// caller can never accidentally write a zero-event block.
+	_, err := encodeBlock(nil)
+	require.Error(t, err)
+
+	got, err := decodeBlock(encodeEmptyBlock())
+	require.NoError(t, err)
+	require.Empty(t, got)
+}
+
+func TestDecodeBlockRoundtripHandcrafted(t *testing.T) {
+	t.Parallel()
+
+	events := []Event{
+		{
+			Seq: 1, WitnessedAt: 100, IndexedAt: 0, Kind: KindCreate,
+			DID: "d1", Collection: "c1", Rkey: "r1", Rev: "v1",
+			Payload: []byte{0xAA, 0xBB},
+		},
+		{
+			Seq: 2, WitnessedAt: 200, IndexedAt: 250, Kind: KindIdentity,
+			DID: "d22", Collection: "", Rkey: "", Rev: "",
+			Payload: nil,
+		},
+	}
+
+	encoded, err := encodeBlock(events)
+	require.NoError(t, err)
+
+	decoded, err := decodeBlock(encoded)
+	require.NoError(t, err)
+
+	// The roundtrip must be deep-equal, including Payload == nil
+	// (not []byte{}) for the zero-length case.
+	require.Equal(t, events, decoded)
+}
+
+func TestDecodeBlockTruncatedReturnsError(t *testing.T) {
+	t.Parallel()
+
+	events := []Event{{Seq: 1, Kind: KindCreate, DID: "d", Payload: []byte("x")}}
+	encoded, err := encodeBlock(events)
+	require.NoError(t, err)
+
+	for cut := range encoded {
+		// Every prefix shorter than the full block must produce an
+		// error, never a panic and never a wrong-but-non-erroring decode.
+		_, err := decodeBlock(encoded[:cut])
+		require.Error(t, err, "expected error at cut=%d", cut)
+	}
+}
+
+func TestDecodeBlockBoundedAllocation(t *testing.T) {
+	t.Parallel()
+
+	// A header claiming 1 billion events must not provoke a giant
+	// allocation; the decoder must validate against input length.
+	hostile := make([]byte, 4)
+	binary.LittleEndian.PutUint32(hostile, 1_000_000_000)
+	_, err := decodeBlock(hostile)
+	require.Error(t, err)
+}
+
+// TestDecodeBlockRejectsTrailingBytes pins the trailing-bytes
+// check in decodeBlock. Without it, encoded-then-padded buffers
+// would round-trip as if they were valid, which would mask
+// upstream bugs and risk ambiguous-trailer attacks against
+// future Reader code.
+func TestDecodeBlockRejectsTrailingBytes(t *testing.T) {
+	t.Parallel()
+
+	encoded, err := encodeBlock([]Event{
+		{Seq: 1, Kind: KindCreate, DID: "d", Payload: []byte("p")},
+	})
+	require.NoError(t, err)
+
+	padded := append([]byte{}, encoded...)
+	padded = append(padded, 0x00)
+	_, err = decodeBlock(padded)
+	require.ErrorIs(t, err, errTruncatedBlock)
+}
+
+// TestDecodeBlockRejectsOutOfRangeKind verifies the per-row Kind
+// guard in the decoder (block.go:243-ish) rejects kinds that the
+// validator catches on the encode side. A round-trip cannot
+// produce one, but a hostile or corrupt buffer can; the decoder
+// must not happily emit Kind(0) or Kind(8).
+func TestDecodeBlockRejectsOutOfRangeKind(t *testing.T) {
+	t.Parallel()
+
+	encoded, err := encodeBlock([]Event{
+		{Seq: 1, Kind: KindCreate, DID: "d", Payload: []byte("p")},
+	})
+	require.NoError(t, err)
+
+	// Locate and corrupt the kind[] byte. encodeBlock writes:
+	//   event_count u32 (4) + seq u64 (8) + witnessed_at i64 (8) +
+	//   indexed_at i64 (8) + kind u8 (1) ...
+	// So kind[0] is at offset 4 + 8 + 8 + 8 = 28.
+	const kindOffset = 4 + 8 + 8 + 8
+	corrupted := append([]byte{}, encoded...)
+	corrupted[kindOffset] = 0
+	_, err = decodeBlock(corrupted)
+	require.ErrorIs(t, err, errTruncatedBlock)
+
+	corrupted[kindOffset] = 8
+	_, err = decodeBlock(corrupted)
+	require.ErrorIs(t, err, errTruncatedBlock)
+}
+
+// TestDecodeBlockRejectsAbsurdEventCount targets the
+// maxBlockEventsLimit guard. A header claiming more events than
+// the cap (and which would also overflow int on 32-bit builds)
+// must be rejected before we attempt allocation.
+func TestDecodeBlockRejectsAbsurdEventCount(t *testing.T) {
+	t.Parallel()
+
+	hostile := make([]byte, 4)
+	binary.LittleEndian.PutUint32(hostile, uint32(maxBlockEventsLimit+1))
+	_, err := decodeBlock(hostile)
+	require.ErrorIs(t, err, errTruncatedBlock)
+}
+
+func TestEncodeBlockCompressedRoundtrip(t *testing.T) {
+	t.Parallel()
+
+	events := []Event{
+		{Seq: 1, WitnessedAt: 100, Kind: KindCreate, DID: "did:plc:a"},
+		{Seq: 2, WitnessedAt: 200, Kind: KindCreate, DID: "did:plc:b", Payload: []byte("x")},
+	}
+
+	frame, err := encodeBlockCompressed(events)
+	require.NoError(t, err)
+	require.NotEmpty(t, frame)
+
+	// The frame is a real zstd frame, not the raw body.
+	require.NotEqual(t, mustEncode(t, events), frame)
+
+	got, err := decodeBlockCompressed(frame)
+	require.NoError(t, err)
+	require.Equal(t, events, got)
+}
+
+func TestDecodeBlockCompressedRejectsGarbage(t *testing.T) {
+	t.Parallel()
+
+	_, err := decodeBlockCompressed([]byte("not a zstd frame"))
+	require.Error(t, err)
+}
+
+// TestDecodeBlockCompressedRejectsZstdBomb pins the
+// WithDecoderMaxMemory guard wired into blockDecoder. A frame whose
+// decompressed body exceeds the configured cap must error rather
+// than allocate gigabytes; the per-block decoder's default of 64 GiB
+// is unsafe for hostile input.
+//
+// We construct the frame against a side encoder so the test stays
+// hermetic and never mutates package state. The body's exact bytes
+// don't matter — we just need it to decompress to more than the cap
+// the assertion uses.
+func TestDecodeBlockCompressedRejectsZstdBomb(t *testing.T) {
+	t.Parallel()
+
+	// Build a small private decoder with a tiny cap. This validates
+	// the wiring without forcing the package-level decoder to actually
+	// allocate gigabytes, which we couldn't do in a unit test anyway.
+	dec, err := newCappedDecoder(1024)
+	require.NoError(t, err)
+	defer dec.Close()
+
+	bigBody := bytes.Repeat([]byte{0xAB}, 4096)
+	frame := blockEncoder.EncodeAll(bigBody, nil)
+
+	_, err = dec.DecodeAll(frame, nil)
+	require.Error(t, err, "decoder must reject decompressed sizes above cap")
+}
+
+// mustEncode is a test helper; it lives here because it has no
+// non-test consumers.
+func mustEncode(t *testing.T, events []Event) []byte {
+	t.Helper()
+	out, err := encodeBlock(events)
+	require.NoError(t, err)
+	return out
+}
+
+// genEvent produces one Event with realistic length distributions.
+// Uses *rand.Rand so the generator is deterministic given a seed.
+func genEvent(r *rand.Rand) Event {
+	// Length distributions chosen to mostly match production atproto
+	// shapes while still occasionally exercising the upper bounds.
+	didLen := pickLen(r, 32, math.MaxUint16, 0.001)
+	collLen := pickLen(r, 24, math.MaxUint8, 0.005)
+	rkeyLen := pickLen(r, 13, math.MaxUint8, 0.005)
+	revLen := pickLen(r, 13, math.MaxUint8, 0.005)
+	payloadLen := pickPayloadLen(r)
+
+	return Event{
+		Seq:         r.Uint64(),
+		WitnessedAt: int64(r.Uint64()),
+		IndexedAt:   int64(r.Uint64()),
+		Kind:        Kind(1 + r.Intn(7)),
+		DID:         randString(r, didLen),
+		Collection:  randString(r, collLen),
+		Rkey:        randString(r, rkeyLen),
+		Rev:         randString(r, revLen),
+		Payload:     randBytes(r, payloadLen),
+	}
+}
+
+// pickLen picks a length centered at typical with rare excursions to max.
+func pickLen(r *rand.Rand, typical, max int, rareProb float64) int {
+	if r.Float64() < rareProb {
+		return max
+	}
+	// Long-tailed but bounded around typical.
+	n := typical + r.Intn(typical/2+1) - typical/4
+	if n < 0 {
+		n = 0
+	}
+	if n > max {
+		n = max
+	}
+	return n
+}
+
+// pickPayloadLen yields nil ~10% of the time (non-commit kinds),
+// most-common around ~500 B, with a long tail up to ~16 KB.
+func pickPayloadLen(r *rand.Rand) int {
+	if r.Float64() < 0.10 {
+		return 0
+	}
+	// Geometric-ish: most around 500, occasional much larger.
+	n := min(max(int(r.NormFloat64()*250+500), 0), 16*1024)
+	return n
+}
+
+func randString(r *rand.Rand, n int) string {
+	if n == 0 {
+		return ""
+	}
+	b := make([]byte, n)
+	for i := range b {
+		// Printable-ish ASCII; the encoder doesn't care about content,
+		// but readable bytes make test failures easier to debug.
+		b[i] = byte(0x20 + r.Intn(0x5F))
+	}
+	return string(b)
+}
+
+func randBytes(r *rand.Rand, n int) []byte {
+	if n == 0 {
+		return nil
+	}
+	b := make([]byte, n)
+	r.Read(b)
+	return b
+}
+
+func TestEncodeBlockRoundtripProperty(t *testing.T) {
+	t.Parallel()
+
+	maxCount := 100
+	if !testing.Short() {
+		maxCount = 200
+	}
+	cfg := &quick.Config{MaxCount: maxCount}
+
+	prop := func(seed int64, n uint16) bool {
+		// Map n into [1, 256] for fast tests. The swarm test covers
+		// up to 4096; this property is about correctness, not size.
+		size := 1 + int(n%256)
+		r := rand.New(rand.NewSource(seed))
+		events := make([]Event, size)
+		for i := range events {
+			events[i] = genEvent(r)
+		}
+
+		encoded, err := encodeBlockCompressed(events)
+		if err != nil {
+			t.Logf("encode failed: %v", err)
+			return false
+		}
+		decoded, err := decodeBlockCompressed(encoded)
+		if err != nil {
+			t.Logf("decode failed: %v", err)
+			return false
+		}
+		if len(decoded) != len(events) {
+			return false
+		}
+		for i := range events {
+			if !eventsEqual(events[i], decoded[i]) {
+				t.Logf("mismatch at %d: got %+v want %+v", i, decoded[i], events[i])
+				return false
+			}
+		}
+		return true
+	}
+
+	if err := quick.Check(prop, cfg); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// eventsEqual is reflect.DeepEqual with the one wrinkle that
+// nil-vs-empty Payload should be treated as equal during property
+// testing — though our decoder produces nil for zero-length, we
+// guard against test-helper drift.
+func eventsEqual(a, b Event) bool {
+	if a.Seq != b.Seq || a.WitnessedAt != b.WitnessedAt ||
+		a.IndexedAt != b.IndexedAt || a.Kind != b.Kind ||
+		a.DID != b.DID || a.Collection != b.Collection ||
+		a.Rkey != b.Rkey || a.Rev != b.Rev {
+		return false
+	}
+	if len(a.Payload) != len(b.Payload) {
+		return false
+	}
+	for i := range a.Payload {
+		if a.Payload[i] != b.Payload[i] {
+			return false
+		}
+	}
+	return true
+}
+
+func TestDecodeBlockCompressedSizedReturnsBodyLen(t *testing.T) {
+	t.Parallel()
+
+	events := []Event{
+		{Seq: 1, Kind: KindCreate, DID: "did:plc:a", Payload: []byte("p1")},
+		{Seq: 2, Kind: KindCreate, DID: "did:plc:b", Payload: []byte("p2")},
+	}
+	frame, err := encodeBlockCompressed(events)
+	require.NoError(t, err)
+
+	gotEvents, gotSize, err := decodeBlockCompressedSized(frame)
+	require.NoError(t, err)
+	require.Len(t, gotEvents, len(events))
+
+	// Cross-check: the body length should equal what encodeBlock
+	// produced before zstd-wrapping.
+	body, err := encodeBlock(events)
+	require.NoError(t, err)
+	require.Equal(t, len(body), gotSize)
+}

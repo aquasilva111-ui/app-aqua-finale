@@ -1,0 +1,19 @@
+import { InvalidRequestError, type Server } from '@atproto/xrpc-server'
+import type { AppContext } from '../../../../context.js'
+import { com } from '../../../../lexicons/index.js'
+
+export default function (server: Server, ctx: AppContext) {
+  server.add(com.atproto.identity.resolveHandle, async ({ params }) => {
+    const [did] = await ctx.hydrator.actor.getDids([params.handle], {
+      lookupUnidirectional: true,
+    })
+    if (!did) {
+      throw new InvalidRequestError('Unable to resolve handle')
+    }
+
+    return {
+      encoding: 'application/json',
+      body: { did },
+    }
+  })
+}

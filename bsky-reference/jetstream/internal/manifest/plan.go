@@ -1,0 +1,486 @@
+package manifest
+
+import (
+	"errors"
+	"math"
+	"slices"
+	"strings"
+
+	"github.com/bluesky-social/jetstream/segment"
+)
+
+var ErrInvalidPlanRequest = errors.New("manifest: invalid plan request")
+
+type PlanMode string
+
+const (
+	PlanModeSegment PlanMode = "segment"
+	PlanModeBlocks  PlanMode = "blocks"
+)
+
+// KindMask is the set of public Jetstream event kinds a plan may contain.
+// Zero means omitted/match all, preserving the pre-kind-filter contract.
+type KindMask uint8
+
+const (
+	KindCommit KindMask = 1 << iota
+	KindIdentity
+	KindAccount
+	KindSync
+
+	allKinds = KindCommit | KindIdentity | KindAccount | KindSync
+)
+
+func (m KindMask) admits(kind KindMask) bool {
+	return m == 0 || m&kind != 0
+}
+
+type PlanSnapshotRequest struct {
+	Kinds       KindMask
+	DIDs        []string
+	Collections []string
+	// CollectionPrefixes are namespace prefixes from wildcard filters
+	// (e.g. "app.bsky.feed." from "app.bsky.feed.*"). Each entry ends in
+	// ".". A segment collection matches if its NSID is in Collections OR
+	// has any of these as a prefix. Like Collections, an empty set here
+	// imposes no collection constraint; the two are combined as a union.
+	CollectionPrefixes []string
+
+	AfterSeq     uint64
+	HasAfterSeq  bool
+	BeforeSeq    uint64
+	HasBeforeSeq bool
+
+	// MaxEntries caps the number of work entries a single plan page may
+	// contain. When the matched work exceeds it, the plan is truncated at a
+	// work-unit boundary (one whole-segment entry or one coalesced block range)
+	// and PlannedThroughSeq is set to the continuation cursor so the caller can
+	// fetch the next page from afterSeq=PlannedThroughSeq. 0 means unlimited (no
+	// pagination); a negative value is a malformed limit and is rejected with
+	// ErrInvalidPlanRequest. At least one unit is always admitted per page even
+	// if that single unit exceeds the cap, so pagination cannot livelock.
+	MaxEntries            int
+	WholeSegmentThreshold float64
+}
+
+type PlanSnapshotResult struct {
+	// PlannedThroughSeq is the continuation cursor: the highest sealed seq this
+	// page authoritatively accounts for. When the page is truncated by
+	// MaxEntries it is the MaxSeq of the last included work unit (so the next
+	// page resumes at afterSeq=PlannedThroughSeq, exclusive); otherwise it
+	// equals SealedTipSeq. A caller has consumed the whole sealed archive once
+	// PlannedThroughSeq >= SealedTipSeq.
+	PlannedThroughSeq uint64
+	// SealedTipSeq is the pagination goal: the sealed-archive tip (capped by
+	// beforeSeq when provided), independent of how many units this page matched
+	// or whether it truncated. It is request-stable across pages of the same
+	// archive snapshot, so a paginating client pins it once and loops until
+	// PlannedThroughSeq reaches it.
+	SealedTipSeq uint64
+	Segments     []PlannedSegment
+	Stats        PlanSnapshotStats
+}
+
+type PlannedSegment struct {
+	Idx      uint64
+	Checksum uint64
+	MinSeq   uint64
+	MaxSeq   uint64
+	Mode     PlanMode
+	Blocks   []BlockRange
+}
+
+type BlockRange struct {
+	First int
+	Last  int
+}
+
+type PlanSnapshotStats struct {
+	SegmentsExamined int
+	SegmentsMatched  int
+	BlocksMatched    int
+	Entries          int
+}
+
+// PlanSnapshot selects sealed archive segment work using manifest-resident
+// metadata only. It has a one-sided contract: no false negatives, possible
+// false positives. Callers must exact-filter decoded rows.
+func (m *Manifest) PlanSnapshot(req PlanSnapshotRequest) (PlanSnapshotResult, error) {
+	if err := m.waitReady(); err != nil {
+		return PlanSnapshotResult{}, err
+	}
+	if req.HasAfterSeq && req.HasBeforeSeq && req.BeforeSeq <= req.AfterSeq {
+		return PlanSnapshotResult{}, ErrInvalidPlanRequest
+	}
+	// MaxEntries == 0 disables per-page truncation; a negative value is a
+	// malformed limit (a misconfigured caller), rejected here rather than
+	// silently treated as unlimited.
+	if req.MaxEntries < 0 {
+		return PlanSnapshotResult{}, ErrInvalidPlanRequest
+	}
+	if req.WholeSegmentThreshold <= 0 || req.WholeSegmentThreshold > 1 {
+		return PlanSnapshotResult{}, ErrInvalidPlanRequest
+	}
+	if req.Kinds&^allKinds != 0 {
+		return PlanSnapshotResult{}, ErrInvalidPlanRequest
+	}
+	if (len(req.Collections) > 0 || len(req.CollectionPrefixes) > 0) &&
+		req.Kinds != 0 && !req.Kinds.admits(KindCommit) {
+		return PlanSnapshotResult{}, ErrInvalidPlanRequest
+	}
+
+	// The requested collection set is request-invariant; resolve it to a lookup
+	// set once rather than rebuilding it for every matched segment.
+	var wantCollections map[string]struct{}
+	if len(req.Collections) > 0 {
+		wantCollections = make(map[string]struct{}, len(req.Collections))
+		for _, collection := range req.Collections {
+			wantCollections[collection] = struct{}{}
+		}
+	}
+
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	// SealedTipSeq is the pagination goal: the sealed-archive tip (capped by
+	// beforeSeq), independent of how many segments the filters matched or
+	// whether this page truncates. A filter that matches nothing in a non-empty
+	// archive still reports the tip, because the planner has confirmed there is
+	// no matching sealed data at or below it. Clients pin it and page until the
+	// continuation cursor reaches it.
+	var result PlanSnapshotResult
+	if len(m.segments) > 0 {
+		// The sealed tip is the highest MaxSeq across all segments. With the
+		// Idx-order==seq-order invariant (enforced at load/refresh by
+		// validateSegmentSeqMonotonicity), that is the last segment's MaxSeq.
+		// We nonetheless scan for the true max as defense-in-depth: a too-low
+		// SealedTipSeq would make a paginating client stop early and silently
+		// skip the higher-seq tail (a prime-directive violation), so this read
+		// must not depend on the ordering invariant holding.
+		var tip uint64
+		for i := range m.segments {
+			if m.segments[i].MaxSeq > tip {
+				tip = m.segments[i].MaxSeq
+			}
+		}
+		result.SealedTipSeq = tip
+		if req.HasBeforeSeq && req.BeforeSeq < result.SealedTipSeq {
+			result.SealedTipSeq = req.BeforeSeq
+		}
+	}
+	// PlannedThroughSeq defaults to the tip (untruncated case); a truncation
+	// below overwrites it with the last included unit's MaxSeq.
+	result.PlannedThroughSeq = result.SealedTipSeq
+
+	// lastUnitMaxSeq tracks the MaxSeq of the most recently admitted work unit
+	// (a whole segment, or a single coalesced block range). On truncation it
+	// becomes the continuation cursor. Within a segment, blocks are seq-disjoint
+	// and index-monotonic (the writer assigns seqs under a single lock and seal
+	// walks frames in ascending file offset), so a block range's MaxSeq cleanly
+	// separates included blocks (<= it) from not-yet-included ones (MinSeq > it)
+	// — the next page's exclusive afterSeq re-admits exactly the next block.
+	var lastUnitMaxSeq uint64
+	truncated := false
+
+	// atCap reports whether the page has reached its per-unit entry cap and the
+	// next unit must be deferred to the following page. The first unit of a page
+	// is always admitted (Entries == 0) even when MaxEntries is 1, so a page can
+	// never return zero units with the cursor unadvanced (which would livelock a
+	// paginating client). Once at least one unit is in, reaching the cap
+	// truncates before the next unit.
+	atCap := func() bool {
+		return req.MaxEntries > 0 && result.Stats.Entries >= req.MaxEntries
+	}
+
+	for i := range m.segments {
+		seg := &m.segments[i]
+		result.Stats.SegmentsExamined++
+		if !segmentOverlapsSeq(seg, req) {
+			continue
+		}
+
+		selected := selectPlanBlocks(seg, req, wantCollections)
+		if len(selected) == 0 {
+			continue
+		}
+
+		planned := PlannedSegment{
+			Idx:      seg.Idx,
+			Checksum: seg.Header.Checksum,
+			MinSeq:   seg.Header.MinSeq,
+			MaxSeq:   seg.Header.MaxSeq,
+		}
+
+		// Density is selected blocks over the segment's *total* block count,
+		// not over the in-window/candidate subset. This intentionally biases a
+		// narrow seq window (or a heavily-compacted segment with many empty
+		// blocks) toward mode=blocks, so clients fetch only the few blocks they
+		// need instead of a whole segment. Both modes are correct under the
+		// one-sided contract; this only trades transport precision.
+		density := float64(len(selected)) / float64(max(len(seg.Blocks), 1))
+		if density >= req.WholeSegmentThreshold {
+			// Whole-segment unit (one entry).
+			if atCap() {
+				truncated = true
+				break
+			}
+			planned.Mode = PlanModeSegment
+			result.Stats.Entries++
+			result.Stats.SegmentsMatched++
+			result.Stats.BlocksMatched += len(selected)
+			result.Segments = append(result.Segments, planned)
+			lastUnitMaxSeq = seg.Header.MaxSeq
+			continue
+		}
+
+		// Block mode: each coalesced range is its own work unit, so truncation
+		// can land partway through a segment. Admit ranges one at a time and
+		// stop at the cap; the continuation cursor then points strictly inside
+		// this segment (the last included range's MaxSeq), so the un-included
+		// tail blocks are re-planned on the next page rather than skipped.
+		planned.Mode = PlanModeBlocks
+		for _, br := range coalesceBlocks(selected) {
+			if atCap() {
+				truncated = true
+				break
+			}
+			planned.Blocks = append(planned.Blocks, br)
+			result.Stats.Entries++
+			result.Stats.BlocksMatched += br.Last - br.First + 1
+			lastUnitMaxSeq = seg.Blocks[br.Last].MaxSeq
+		}
+		if len(planned.Blocks) > 0 {
+			result.Stats.SegmentsMatched++
+			result.Segments = append(result.Segments, planned)
+		}
+		if truncated {
+			break
+		}
+	}
+
+	if truncated {
+		result.PlannedThroughSeq = lastUnitMaxSeq
+	}
+
+	return result, nil
+}
+
+func segmentOverlapsSeq(seg *SegmentMetadata, req PlanSnapshotRequest) bool {
+	if len(seg.Blocks) == 0 || seg.Header.EventCount == 0 {
+		return false
+	}
+	if req.HasAfterSeq && seg.Header.MaxSeq <= req.AfterSeq {
+		return false
+	}
+	if req.HasBeforeSeq && seg.Header.MinSeq > req.BeforeSeq {
+		return false
+	}
+	return true
+}
+
+func blockOverlapsSeq(block segment.BlockInfo, req PlanSnapshotRequest) bool {
+	if block.EventCount == 0 {
+		return false
+	}
+	if req.HasAfterSeq && block.MaxSeq <= req.AfterSeq {
+		return false
+	}
+	if req.HasBeforeSeq && block.MinSeq > req.BeforeSeq {
+		return false
+	}
+	return true
+}
+
+func selectPlanBlocks(seg *SegmentMetadata, req PlanSnapshotRequest, wantCollections map[string]struct{}) []int {
+	collectionMatchAll := len(req.Collections) == 0 && len(req.CollectionPrefixes) == 0
+	candidateMatchAll := req.Kinds == 0 && collectionMatchAll
+	didMatchAll := len(req.DIDs) == 0
+
+	if !didMatchAll && !segmentBloomMayContainAny(seg, req.DIDs) {
+		return nil
+	}
+
+	var candidates collectionCandidates
+	if !candidateMatchAll {
+		candidates = collectionCandidatesForSegment(seg, req.Kinds, collectionMatchAll, wantCollections, req.CollectionPrefixes)
+		if candidates.empty() {
+			return nil
+		}
+	}
+
+	out := make([]int, 0, len(seg.Blocks))
+	for i, block := range seg.Blocks {
+		if !blockOverlapsSeq(block, req) {
+			continue
+		}
+		if !candidateMatchAll && !blockHasAnyCandidate(seg, i, candidates) {
+			continue
+		}
+		if !didMatchAll && !blockBloomMayContainAny(seg, i, req.DIDs) {
+			continue
+		}
+		out = append(out, i)
+	}
+	return out
+}
+
+func segmentBloomMayContainAny(seg *SegmentMetadata, dids []string) bool {
+	if seg.SegmentBloom == nil {
+		return true
+	}
+	return slices.ContainsFunc(dids, seg.SegmentBloom.TestString)
+}
+
+func blockBloomMayContainAny(seg *SegmentMetadata, blockIdx int, dids []string) bool {
+	if blockIdx < 0 || blockIdx >= len(seg.BlockBlooms) {
+		return true
+	}
+	bloom := seg.BlockBlooms[blockIdx]
+	if bloom == nil {
+		return true
+	}
+	return slices.ContainsFunc(dids, bloom.TestString)
+}
+
+// collectionCandidatesForSegment returns the segment-local collection indices that
+// may contain a requested kind. Real collection IDs represent commit events;
+// reserved sentinel IDs represent account, identity, and sync events. A
+// collection predicate narrows only real IDs. KindMask zero admits every kind.
+//
+// The sentinel union is what closes the collection-filtered DID-tombstone gap:
+// #account/#identity/#sync markers carry no real collection, so the seal/rewrite
+// index tags their blocks with a reserved sentinel collection instead. Always
+// admitting the requested sentinels under a collection filter makes the
+// marker-bearing blocks selectable; omitted kinds admits all three, while an
+// explicit kind mask can exclude them. The per-block DID bloom still narrows
+// by DID. A client can never request a sentinel itself — the names are invalid NSIDs and the request
+// validator only accepts NSIDs/NSID-authority prefixes — so the sentinels enter
+// the matched set only here, never via want/prefixes.
+//
+// Matching prefixes against this segment's own resident collection table is
+// equivalent to expanding each prefix against the global collection union and
+// exact-matching, because a segment can only contain collections that exist in
+// that union — but it needs no global cache and stays current under the manifest
+// read lock.
+type collectionCandidates struct {
+	// included contains exact real IDs and selected marker IDs.
+	included map[uint32]struct{}
+	// sentinels contains every marker ID resident in the segment. When allReal
+	// is set, any block collection ID not in this set is a commit candidate.
+	sentinels map[uint32]struct{}
+	allReal   bool
+	hasReal   bool
+}
+
+func (c collectionCandidates) empty() bool {
+	return len(c.included) == 0 && (!c.allReal || !c.hasReal)
+}
+
+func collectionCandidatesForSegment(seg *SegmentMetadata, kinds KindMask, collectionMatchAll bool, want map[string]struct{}, prefixes []string) collectionCandidates {
+	out := collectionCandidates{
+		included: make(map[uint32]struct{}, min(len(want)+len(prefixes)+3, len(seg.Collections))),
+		allReal:  collectionMatchAll && kinds.admits(KindCommit),
+	}
+	for id, collection := range seg.Collections {
+		// BlockCollections references collections by uint32 index, so an index
+		// past MaxUint32 can never appear in a block and matching it would be
+		// dead weight. Skipping it cannot cause a false negative (no block
+		// could reference it), preserving the one-sided contract.
+		if id > math.MaxUint32 {
+			continue
+		}
+		if kind := sentinelKind(collection); kind != 0 {
+			out.sentinels = addID(out.sentinels, uint32(id))
+			if kinds.admits(kind) {
+				out.included[uint32(id)] = struct{}{}
+			}
+			continue
+		}
+		if !kinds.admits(KindCommit) {
+			continue
+		}
+		out.hasReal = true
+		if collectionMatchAll {
+			continue
+		}
+		if _, ok := want[collection]; ok {
+			out.included[uint32(id)] = struct{}{}
+			continue
+		}
+		for _, prefix := range prefixes {
+			if strings.HasPrefix(collection, prefix) {
+				out.included[uint32(id)] = struct{}{}
+				break
+			}
+		}
+	}
+	return out
+}
+
+func addID(ids map[uint32]struct{}, id uint32) map[uint32]struct{} {
+	if ids == nil {
+		ids = make(map[uint32]struct{}, 3)
+	}
+	ids[id] = struct{}{}
+	return ids
+}
+
+func sentinelKind(collection string) KindMask {
+	switch collection {
+	case segment.SentinelCollectionAccount:
+		return KindAccount
+	case segment.SentinelCollectionIdentity:
+		return KindIdentity
+	case segment.SentinelCollectionSync:
+		return KindSync
+	default:
+		return 0
+	}
+}
+
+func blockHasAnyCollection(seg *SegmentMetadata, blockIdx int, ids map[uint32]struct{}) bool {
+	if blockIdx < 0 || blockIdx >= len(seg.BlockCollections) {
+		return true
+	}
+	for _, id := range seg.BlockCollections[blockIdx] {
+		if _, ok := ids[id]; ok {
+			return true
+		}
+	}
+	return false
+}
+
+func blockHasAnyCandidate(seg *SegmentMetadata, blockIdx int, candidates collectionCandidates) bool {
+	if blockIdx < 0 || blockIdx >= len(seg.BlockCollections) {
+		return true
+	}
+	for _, id := range seg.BlockCollections[blockIdx] {
+		if _, ok := candidates.included[id]; ok {
+			return true
+		}
+		if candidates.allReal {
+			if _, sentinel := candidates.sentinels[id]; !sentinel {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func coalesceBlocks(blocks []int) []BlockRange {
+	if len(blocks) == 0 {
+		return nil
+	}
+	out := make([]BlockRange, 0, len(blocks))
+	cur := BlockRange{First: blocks[0], Last: blocks[0]}
+	for _, block := range blocks[1:] {
+		if block == cur.Last+1 {
+			cur.Last = block
+			continue
+		}
+		out = append(out, cur)
+		cur = BlockRange{First: block, Last: block}
+	}
+	out = append(out, cur)
+	return out
+}

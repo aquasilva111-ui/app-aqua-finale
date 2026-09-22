@@ -1,0 +1,41 @@
+{
+  "name": "@atproto-labs/handle-resolver-node",
+  "version": "0.2.10",
+  "license": "MIT",
+  "description": "Node specific ATProto handle to DID resolver",
+  "keywords": [
+    "atproto",
+    "oauth",
+    "handle",
+    "identity",
+    "node"
+  ],
+  "homepage": "https://atproto.com",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/bluesky-social/atproto",
+    "directory": "packages/internal/handle-resolver-node"
+  },
+  "files": [
+    "./dist",
+    "./CHANGELOG.md"
+  ],
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "dependencies": {
+    "@atproto-labs/fetch-node": "workspace:^",
+    "@atproto-labs/handle-resolver": "workspace:^",
+    "@atproto/did": "workspace:^"
+  },
+  "scripts": {
+    "build": "tsc --build tsconfig.build.json"
+  }
+}

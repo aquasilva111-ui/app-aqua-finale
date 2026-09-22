@@ -1,0 +1,56 @@
+{
+  "compilerOptions": {
+    "target": "es2015",
+    "lib": ["dom", "dom.iterable", "esnext"],
+    "allowJs": true,
+    "skipLibCheck": true,
+    "strict": true,
+    "forceConsistentCasingInFileNames": true,
+    "noEmit": true,
+    "esModuleInterop": true,
+    "module": "esnext",
+    "moduleResolution": "bundler",
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "jsx": "preserve",
+    "incremental": true,
+    "plugins": [
+      {
+        "name": "next"
+      }
+    ],
+    "noImplicitAny": false,
+    "baseUrl": ".",
+    "paths": {
+      "@/lib/*": ["lib/*"],
+      "@/shell/*": ["components/shell/*"],
+      "@/common/*": ["components/common/*"],
+      "@/reports/*": ["components/reports/*"],
+      "@/invites/*": ["components/invites/*"],
+      "@/repositories/*": ["components/repositories/*"],
+      "@/entertainment/*": ["components/entertainment/*"],
+      "@/mod-event/*": ["components/mod-event/*"],
+      "@/subject/*": ["components/subject/*"],
+      "@/config/*": ["components/config/*"],
+      "@/dms/*": ["components/dms/*"],
+      "@/workspace/*": ["components/workspace/*"],
+      "@/sets/*": ["components/sets/*"],
+      "@/setting/*": ["components/setting/*"],
+      "@/team/*": ["components/team/*"],
+      "@/safelink/*": ["components/safelink/*"],
+      "@/email/*": ["components/email/*"],
+      "@/scheduled-actions/*": ["components/scheduled-actions/*"],
+      "@/queues/*": ["components/queues/*"],
+      "@/assignments/*": ["components/assignments/*"],
+    }
+  },
+  "include": [
+    "next-env.d.ts",
+    "**/*.ts",
+    "**/*.tsx",
+    // Folder with a dot in the name is not included by default (?)
+    "**/.*/**/*.ts",
+    ".next/types/**/*.ts"
+  ],
+  "exclude": ["node_modules", "cypress/*"]
+}

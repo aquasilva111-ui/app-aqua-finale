@@ -1,0 +1,21 @@
+mutant: m015_collection_count_double
+target: segment/seal.go
+failure-mode: |
+  The per-collection event count in the footer is incremented by 2 instead
+  of 1, corrupting the collection index. Models a stray increment. (The
+  increment moved into the shared internCollection helper in #175; the count
+  is now guarded by countEvent so sentinel ids do not inflate it.)
+expected-detection: |
+  KILLED@default: the oracle's sealed segment observer now re-derives footer
+  collection counts from decoded rows and compares them with the persisted
+  collection index, so a doubled count is caught even when row bytes are
+  otherwise intact.
+expected-tier: default
+tiers: default,stress
+
+diff --git a/segment/seal.go b/segment/seal.go
+--- a/segment/seal.go
++++ b/segment/seal.go
+@@ -244 +244 @@ func (res *blockWalkResult) internCollection(collection string, countEvent bool,
+-		res.collectionEventCounts[id]++
++		res.collectionEventCounts[id] += 2

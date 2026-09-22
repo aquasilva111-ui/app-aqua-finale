@@ -1,0 +1,213 @@
+# Scheduled simulator oracle seed sweep.
+#
+# Each matrix job owns one pre-generated seed. A failed-job rerun therefore
+# repeats exactly the interrupted scenario instead of discarding completed work
+# or silently drawing a replacement seed.
+
+name: oracle-scheduled
+
+on:
+  schedule:
+    # Run every 6 hours at minute 17 to stay away from top-of-hour Actions rush.
+    - cron: "17 2,8,14,20 * * *"
+  workflow_dispatch:
+    inputs:
+      seeds:
+        description: "Number of randomly-chosen seeds to sweep"
+        required: false
+        default: "10"
+      race_seeds:
+        description: "Number of seeds for the -race lane (race is ~5-15x slower)"
+        required: false
+        default: "3"
+
+permissions: {}
+
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: false
+
+jobs:
+  plan:
+    name: plan oracle shards
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      oracle: ${{ steps.seeds.outputs.oracle }}
+      race: ${{ steps.seeds.outputs.race }}
+    steps:
+      - name: Generate stable seeds
+        id: seeds
+        env:
+          ORACLE_SWEEP_SEEDS: ${{ github.event.inputs.seeds || '5' }}
+          ORACLE_RACE_SWEEP_SEEDS: ${{ github.event.inputs.race_seeds || '1' }}
+        run: |
+          set -euo pipefail
+
+          validate_count() {
+            local name="$1"
+            local count="$2"
+            local maximum="$3"
+            if [[ ! "$count" =~ ^[1-9][0-9]*$ ]] || (( count > maximum )); then
+              echo "${name} must be an integer from 1 through ${maximum}; got ${count}" >&2
+              exit 2
+            fi
+          }
+
+          matrix() {
+            local count="$1"
+            local output='{"include":['
+            local separator=''
+            local seed
+            for ((i = 0; i < count; i++)); do
+              seed="$(od -An -N8 -tu8 /dev/urandom | tr -d ' ')"
+              output+="${separator}{\"seed\":\"${seed}\"}"
+              separator=','
+            done
+            printf '%s]}' "$output"
+          }
+
+          validate_count seeds "$ORACLE_SWEEP_SEEDS" 100
+          validate_count race_seeds "$ORACLE_RACE_SWEEP_SEEDS" 25
+          echo "oracle=$(matrix "$ORACLE_SWEEP_SEEDS")" >> "$GITHUB_OUTPUT"
+          echo "race=$(matrix "$ORACLE_RACE_SWEEP_SEEDS")" >> "$GITHUB_OUTPUT"
+
+  oracle-sweep:
+    name: oracle seed (${{ matrix.seed }})
+    needs: plan
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      max-parallel: 10
+      matrix: ${{ fromJSON(needs.plan.outputs.oracle) }}
+    env:
+      ORACLE_SEED: ${{ matrix.seed }}
+      ORACLE_ARTIFACT_DIR: ${{ github.workspace }}/oracle-artifacts/${{ matrix.seed }}
+    steps:
+      - name: Harden runner
+        uses: step-security/harden-runner@9ca718d3bf646d6534007c269a635b3e54cadf99 # v2.19.2
+        with:
+          egress-policy: block
+          allowed-endpoints: >
+            api.github.com:443
+            cache.nixos.org:443
+            codeload.github.com:443
+            github.com:443
+            install.determinate.systems:443
+            releases.nixos.org:443
+            objects.githubusercontent.com:443
+            release-assets.githubusercontent.com:443
+            raw.githubusercontent.com:443
+            proxy.golang.org:443
+            sum.golang.org:443
+            storage.googleapis.com:443
+            dl.google.com:443
+            results-receiver.actions.githubusercontent.com:443
+            *.blob.core.windows.net:443
+
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+
+      - name: Install Nix
+        uses: DeterminateSystems/nix-installer-action@ef8a148080ab6020fd15196c2084a2eea5ff2d25 # v22
+        with:
+          determinate: false
+          diagnostic-endpoint: ""
+          github-token: ""
+
+      - name: Oracle seed
+        run: ./dev.sh --command just oracle-sweep 1 "" "$ORACLE_SEED"
+
+      - name: Upload diagnostic artifacts
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: oracle-failure-${{ matrix.seed }}
+          path: ${{ env.ORACLE_ARTIFACT_DIR }}
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Failure summary
+        if: failure()
+        run: |
+          {
+            echo "## Scheduled oracle test failed"
+            echo
+            echo "Seed: ${ORACLE_SEED}"
+            echo "Repro: just oracle-sweep 1 \"\" ${ORACLE_SEED}"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  oracle-sweep-race:
+    name: oracle race seed (${{ matrix.seed }})
+    needs: plan
+    runs-on: ubuntu-24.04
+    timeout-minutes: 110
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      max-parallel: 1
+      matrix: ${{ fromJSON(needs.plan.outputs.race) }}
+    env:
+      ORACLE_SEED: ${{ matrix.seed }}
+      ORACLE_ARTIFACT_DIR: ${{ github.workspace }}/oracle-race-artifacts/${{ matrix.seed }}
+    steps:
+      - name: Harden runner
+        uses: step-security/harden-runner@9ca718d3bf646d6534007c269a635b3e54cadf99 # v2.19.2
+        with:
+          egress-policy: block
+          allowed-endpoints: >
+            api.github.com:443
+            cache.nixos.org:443
+            codeload.github.com:443
+            github.com:443
+            install.determinate.systems:443
+            releases.nixos.org:443
+            objects.githubusercontent.com:443
+            release-assets.githubusercontent.com:443
+            raw.githubusercontent.com:443
+            proxy.golang.org:443
+            sum.golang.org:443
+            storage.googleapis.com:443
+            dl.google.com:443
+            results-receiver.actions.githubusercontent.com:443
+            *.blob.core.windows.net:443
+
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+
+      - name: Install Nix
+        uses: DeterminateSystems/nix-installer-action@ef8a148080ab6020fd15196c2084a2eea5ff2d25 # v22
+        with:
+          determinate: false
+          diagnostic-endpoint: ""
+          github-token: ""
+
+      - name: Oracle seed (race detector)
+        run: ./dev.sh --command just oracle-sweep 1 race "$ORACLE_SEED"
+
+      - name: Upload diagnostic artifacts
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: oracle-race-failure-${{ matrix.seed }}
+          path: ${{ env.ORACLE_ARTIFACT_DIR }}
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Failure summary
+        if: failure()
+        run: |
+          {
+            echo "## Scheduled oracle race test failed"
+            echo
+            echo "Seed: ${ORACLE_SEED}"
+            echo "Repro: just oracle-sweep 1 race ${ORACLE_SEED}"
+          } >> "$GITHUB_STEP_SUMMARY"

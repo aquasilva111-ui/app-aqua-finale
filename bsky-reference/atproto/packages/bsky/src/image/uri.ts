@@ -1,0 +1,111 @@
+import { type UriString, isUriString } from '@atproto/lex'
+import type { Options } from './util.js'
+
+// @NOTE if there are any additions here, ensure to include them on ImageUriBuilder.presets
+export type ImagePreset =
+  'avatar' | 'banner' | 'feed_thumbnail' | 'feed_fullsize'
+
+const PATH_REGEX = /^\/(.+?)\/plain\/(.+?)\/(.+?)(?:@(.+?))?$/
+
+export class ImageUriBuilder {
+  public endpoint: UriString
+
+  constructor(endpoint: string) {
+    if (!isUriString(endpoint)) {
+      throw new Error('ImageUriBuilder endpoint must be a valid UriString')
+    }
+    this.endpoint = endpoint
+  }
+
+  static presets: ImagePreset[] = [
+    'avatar',
+    'banner',
+    'feed_thumbnail',
+    'feed_fullsize',
+  ]
+
+  getPresetUri(id: ImagePreset, did: string, cid: string): UriString {
+    const options = presets[id]
+    if (!options) {
+      throw new Error(`Unrecognized requested common uri type: ${id}`)
+    }
+
+    const path = ImageUriBuilder.getPath({
+      preset: id,
+      did,
+      cid,
+    })
+
+    return `${this.endpoint}${path}`
+  }
+
+  static getPath(opts: { preset: ImagePreset } & BlobLocation) {
+    return `/${opts.preset}/plain/${opts.did}/${opts.cid}`
+  }
+
+  static getOptions(
+    path: string,
+  ): Options & BlobLocation & { preset: ImagePreset } {
+    const match = path.match(PATH_REGEX)
+    if (!match) {
+      throw new BadPathError('Invalid path')
+    }
+    const [, presetUnsafe, did, cid, formatUnsafe] = match
+    if (!(ImageUriBuilder.presets as string[]).includes(presetUnsafe)) {
+      throw new BadPathError('Invalid path: bad preset')
+    }
+    if (
+      formatUnsafe !== undefined &&
+      formatUnsafe !== 'jpeg' &&
+      formatUnsafe !== 'webp'
+    ) {
+      throw new BadPathError('Invalid path: bad format')
+    }
+    const preset = presetUnsafe as ImagePreset
+    const format = formatUnsafe as Options['format']
+    return {
+      ...presets[preset],
+      format: format ?? presets[preset].format,
+      did,
+      cid,
+      preset,
+    }
+  }
+}
+
+type BlobLocation = { cid: string; did: string }
+
+export class BadPathError extends Error {}
+
+// @NOTE these prefix settings don't get used anywhere in this package,
+// but they serve as soft documentation of the behavior in production.
+export const presets: Record<ImagePreset, Options> = {
+  avatar: {
+    format: 'webp',
+    fit: 'cover',
+    height: 1000,
+    width: 1000,
+    min: true,
+  },
+  banner: {
+    format: 'webp',
+    fit: 'cover',
+    height: 1000,
+    width: 3000,
+    min: true,
+  },
+  feed_thumbnail: {
+    format: 'webp',
+    fit: 'inside',
+    height: 2000,
+    width: 2000,
+    min: true,
+  },
+  feed_fullsize: {
+    format: 'webp',
+    fit: 'inside',
+    height: 1000,
+    width: 1000,
+    min: true,
+  },
+}

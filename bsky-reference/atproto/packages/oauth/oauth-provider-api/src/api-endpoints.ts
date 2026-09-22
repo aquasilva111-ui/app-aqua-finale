@@ -1,0 +1,350 @@
+import type { SignedJwt } from '@atproto/jwk'
+import type { OAuthClientMetadata } from '@atproto/oauth-types'
+import type {
+  DidString,
+  HandleString,
+  ISODatetimeString,
+} from '@atproto/syntax'
+import type { Account, DeviceMetadata, Session } from './types.js'
+
+export type { DidString }
+
+// These are the endpoints implemented by the OAuth provider, for its UI to
+// call.
+
+export type ApiEndpoints = {
+  '/verify-handle-availability': {
+    method: 'POST'
+    input: VerifyHandleAvailabilityInput
+    output: { available: true }
+  }
+  '/sign-up': {
+    method: 'POST'
+    input: SignUpInput
+    output: SignUpOutput
+  }
+  '/sign-in': {
+    method: 'POST'
+    input: SignInInput
+    output: SignInOutput
+  }
+  '/reset-password-request': {
+    method: 'POST'
+    input: InitiatePasswordResetInput
+    output: { success: true }
+  }
+  '/reset-password-confirm': {
+    method: 'POST'
+    input: ConfirmResetPasswordInput
+    output: { success: true }
+  }
+  '/sign-out': {
+    method: 'POST'
+    input: SignOutInput
+    output: { success: true }
+  }
+  /**
+   * Lists all the accounts that are currently active, on the current device.
+   */
+  '/device-sessions': {
+    method: 'GET'
+    output: Session[]
+  }
+  /**
+   * Lists all the active OAuth sessions (access/refresh tokens) that where
+   * issued to OAuth clients (apps).
+   *
+   * @NOTE can be revoked using the oauth revocation endpoint (json or form
+   * encoded)
+   *
+   * ```http
+   * POST /oauth/revoke
+   * Content-Type: application/x-www-form-urlencoded
+   *
+   * token=<tokenId>
+   * ```
+   */
+  '/oauth-sessions': {
+    method: 'GET'
+    params: OAuthSessionsInput
+    output: OAuthSessionsOutput
+  }
+  '/revoke-oauth-session': {
+    method: 'POST'
+    input: RevokeOAuthSessionInput
+    output: { success: true }
+  }
+  /**
+   * Lists all the sessions that are currently active for a particular user, on
+   * other devices.
+   */
+  '/account-sessions': {
+    method: 'GET'
+    params: AccountSessionsInput
+    output: AccountSessionsOutput
+  }
+  '/revoke-account-session': {
+    method: 'POST'
+    input: RevokeAccountSessionInput
+    output: { success: true }
+  }
+  '/update-email-request': {
+    method: 'POST'
+    input: InitiateEmailUpdateInput
+    output: InitiateEmailUpdateOutput
+  }
+  '/update-email-confirm': {
+    method: 'POST'
+    input: ConfirmEmailUpdateInput
+    output: ConfirmEmailUpdateOutput
+  }
+  '/verify-email-request': {
+    method: 'POST'
+    input: InitiateEmailVerificationInput
+    output: { success: true }
+  }
+  '/verify-email-confirm': {
+    method: 'POST'
+    input: ConfirmEmailVerificationInput
+    output: ConfirmEmailVerificationOutput
+  }
+  '/update-handle': {
+    method: 'POST'
+    input: UpdateHandleInput
+    output: UpdateHandleOutput
+  }
+  /**
+   * Marks the account as deactivated. The account remains recoverable — the
+   * user can sign back in to reactivate via {@link ApiEndpoints['/reactivate-account']}.
+   * Profile, posts, feeds and lists are hidden across the network until then.
+   */
+  '/deactivate-account': {
+    method: 'POST'
+    input: DeactivateAccountInput
+    output: DeactivateAccountOutput
+  }
+  /**
+   * Reactivates a previously-deactivated account. No-op when the account is
+   * already active.
+   */
+  '/reactivate-account': {
+    method: 'POST'
+    input: ReactivateAccountInput
+    output: ReactivateAccountOutput
+  }
+  /**
+   * Initiates account deletion by sending a confirmation code to the account's
+   * email address. The account is NOT deleted until
+   * {@link ApiEndpoints['/delete-account-confirm']} is called with the matching
+   * token and the user's current password.
+   */
+  '/delete-account-request': {
+    method: 'POST'
+    input: InitiateAccountDeletionInput
+    output: { success: true }
+  }
+  /**
+   * Confirms and finalizes account deletion. Requires both the email
+   * confirmation token issued by {@link ApiEndpoints['/delete-account-request']}
+   * and the user's current password. Deletion is irreversible.
+   */
+  '/delete-account-confirm': {
+    method: 'POST'
+    input: ConfirmAccountDeletionInput
+    output: { success: true }
+  }
+  '/consent': {
+    method: 'POST'
+    input: ConsentInput
+    output: { url: string }
+  }
+  '/reject': {
+    method: 'POST'
+    input: RejectInput
+    output: { url: string }
+  }
+}
+
+/**
+ * When a user signs in without the "remember me" option, the server returns an
+ * ephemeral token. When used as `Bearer` authorization header, the token will
+ * be used in order to authenticate the users in place of using the user's
+ * cookie based session (which are only created when "remember me" is checked).
+ *
+ * Only include this token in the `Authorization` header when making requests to
+ * the OAuth provider API, **FOR THE ACCOUNT IT WAS GENERATED FOR**.
+ */
+export type EphemeralToken = SignedJwt
+
+export type SignInInput = {
+  locale: string
+  username: string
+  password: string
+  emailOtp?: string
+  remember?: boolean
+}
+
+export type SignInOutput = {
+  account: Account
+  ephemeralToken?: EphemeralToken
+}
+
+export type SignUpInput = {
+  locale: string
+  handle: string
+  email: string
+  password: string
+  inviteCode?: string
+  hcaptchaToken?: string
+}
+
+export type SignUpOutput = {
+  account: Account
+  ephemeralToken?: EphemeralToken
+}
+
+export type SignOutInput = {
+  did: DidString | DidString[]
+}
+
+export type InitiatePasswordResetInput = {
+  locale: string
+  email: string
+}
+
+export type ConfirmResetPasswordInput = {
+  token: string
+  password: string
+}
+
+export type InitiateEmailUpdateInput = {
+  did: DidString
+  locale?: string
+}
+
+export type InitiateEmailUpdateOutput = {
+  tokenRequired: boolean
+}
+
+export type ConfirmEmailUpdateInput = {
+  did: DidString
+  token?: string
+  email: string
+  locale?: string
+}
+
+export type ConfirmEmailUpdateOutput = {
+  account: Account
+}
+
+export type InitiateEmailVerificationInput = {
+  did: DidString
+  locale?: string
+}
+
+export type ConfirmEmailVerificationInput = {
+  did: DidString
+  token: string
+  email: string
+}
+
+export type ConfirmEmailVerificationOutput = {
+  account: Account
+}
+
+export type VerifyHandleAvailabilityInput = {
+  handle: HandleString
+}
+
+export type UpdateHandleInput = {
+  did: DidString
+  handle: HandleString
+}
+
+export type UpdateHandleOutput = {
+  account: Account
+}
+
+export type DeactivateAccountInput = {
+  did: DidString
+}
+
+export type DeactivateAccountOutput = {
+  account: Account
+}
+
+export type ReactivateAccountInput = {
+  did: DidString
+}
+
+export type ReactivateAccountOutput = {
+  account: Account
+}
+
+export type InitiateAccountDeletionInput = {
+  did: DidString
+  locale?: string
+}
+
+export type ConfirmAccountDeletionInput = {
+  did: DidString
+  token: string
+  password: string
+}
+
+export type RevokeAccountSessionInput = {
+  did: DidString
+  deviceId: string
+}
+
+export type OAuthSessionsInput = {
+  did: DidString
+}
+
+export type OAuthSessionsOutput = ActiveOAuthSession[]
+
+export type AccountSessionsInput = {
+  did: DidString
+}
+
+export type AccountSessionsOutput = ActiveAccountSession[]
+
+export type RevokeOAuthSessionInput = {
+  did: DidString
+  tokenId: string
+}
+
+export type ConsentInput = {
+  did: DidString
+  scope?: string
+}
+
+export type RejectInput = Record<string, never>
+
+/**
+ * Represents another device on which an account is currently signed-in.
+ */
+export type ActiveAccountSession = {
+  deviceId: string
+  deviceMetadata: DeviceMetadata
+
+  isCurrentDevice: boolean
+}
+
+/**
+ * Represents an active OAuth session (access token).
+ */
+export type ActiveOAuthSession = {
+  tokenId: string
+
+  createdAt: ISODatetimeString
+  updatedAt: ISODatetimeString
+
+  active: boolean
+
+  clientId: string
+  /** An "undefined" value means that the client metadata could not be fetched */
+  clientMetadata?: OAuthClientMetadata
+
+  scope?: string
+}

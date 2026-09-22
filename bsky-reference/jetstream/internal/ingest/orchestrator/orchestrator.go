@@ -1,0 +1,173 @@
+package orchestrator
+
+import (
+	"context"
+	"fmt"
+	"log/slog"
+	"path/filepath"
+	"sync"
+	"sync/atomic"
+	"time"
+
+	"github.com/bluesky-social/jetstream/internal/crashpoint"
+	"github.com/bluesky-social/jetstream/internal/ingest"
+	"github.com/bluesky-social/jetstream/internal/lifecycle"
+	"github.com/bluesky-social/jetstream/internal/obs"
+)
+
+// Orchestrator owns the ingestion-lifecycle state machine. Construct
+// via New; call Run exactly once.
+type Orchestrator struct {
+	cfg Config
+	// logger is cfg.Logger pre-attributed with component=orchestrator
+	// for the orchestrator's own log lines. cfg.Logger itself is left
+	// bare (no component attribute) so child constructors (live.Open,
+	// ingest.Open, backfill.Run) can set their own `component`
+	// without slog stacking duplicate keys (slog appends; it does not
+	// replace).
+	logger *slog.Logger
+
+	compactionTrigger chan struct{}
+
+	// rewriteMu serializes every in-place segment rewrite (delete-compaction
+	// AND timestamp import) so two rewrites can never race on the
+	// tmp+fsync+rename of the same segment file — the loser of that race would
+	// silently drop the winner's changes (design §3.3, §6 H).
+	//
+	// Until timestamp import existed, mutual exclusion was implicit: only the
+	// single runSteadyCompactor goroutine ever called a rewrite pass. Import
+	// (M6) is dispatched from a separate request-handler goroutine, so that
+	// implicit guarantee no longer holds and the exclusion must be explicit.
+	// Both passes acquire this through withRewriteLock; an import and a
+	// delete-compaction pass are therefore mutually exclusive, and the loser
+	// waits (design §6 H).
+	rewriteMu sync.Mutex
+
+	// steadyWriter is non-nil only while the steady-state writer is open.
+	// Timestamp import is steady-state-only and uses this pointer to force
+	// rotate the active segment after activating new rules.
+	steadyWriter atomic.Pointer[ingest.Writer]
+}
+
+// New validates cfg and returns an Orchestrator ready to Run.
+func New(cfg Config) (*Orchestrator, error) {
+	if err := cfg.validate(); err != nil {
+		return nil, err
+	}
+	return &Orchestrator{
+		cfg:               cfg,
+		logger:            cfg.Logger.With(slog.String("component", "orchestrator")),
+		compactionTrigger: make(chan struct{}, 1),
+	}, nil
+}
+
+// Run reads the persisted lifecycle phase and dispatches to the
+// matching entry path. Phase transitions during a single Run are
+// internal — callers see one Run that returns when ctx is cancelled
+// or the steady-state consumer exits.
+//
+// On a fresh data dir (no phase key), Run treats the data dir as
+// PhaseBootstrap and writes that value before starting any
+// subsystems. This matches the previous cmd/jetstream behavior.
+func (o *Orchestrator) Run(ctx context.Context) error {
+	return obs.Span(ctx, func(ctx context.Context) error {
+		phase, err := lifecycle.ReadPhase(o.cfg.Store)
+		if err != nil {
+			return fmt.Errorf("orchestrator: read phase: %w", err)
+		}
+		if phase == "" {
+			phase = lifecycle.PhaseBootstrap
+			if err := lifecycle.WritePhase(o.cfg.Store, phase, time.Now().UTC()); err != nil {
+				return fmt.Errorf("orchestrator: write initial phase: %w", err)
+			}
+		}
+
+		// A crash mid-rewrite can leave a segment-sized *.jss.tmp
+		// behind; reclaim it at boot even when compaction is disabled
+		// (each pass also cleans at start). Under the rewrite lock so a
+		// live rewrite's tmp is never unlinked, should an import be
+		// dispatched this early.
+		if err := o.withRewriteLock(func() error {
+			return removeStaleCompactionTempsFS(o.cfg.FS, filepath.Join(o.cfg.DataDir, "segments"))
+		}); err != nil {
+			return err
+		}
+
+		o.logger.InfoContext(ctx, "starting", "phase", phase)
+
+		switch phase {
+		case lifecycle.PhaseBootstrap:
+			o.cfg.Metrics.setPhase(PhaseGaugeBootstrap)
+			if err := o.runBootstrap(ctx); err != nil {
+				return err
+			}
+
+			// runBootstrap returned cleanly: phase=merging is durably
+			// written and the bootstrap-time subsystems are torn down.
+			// Merge has NOT run and PhaseSteadyState has NOT been written;
+			// fall through to do both.
+			if o.cfg.BarrierAfterBootstrap != nil {
+				if err := o.cfg.BarrierAfterBootstrap(ctx); err != nil {
+					return fmt.Errorf("orchestrator: after-bootstrap barrier: %w", err)
+				}
+			}
+
+			fallthrough
+		case lifecycle.PhaseMerging:
+			// Either we just got here from bootstrap (fallthrough — in
+			// which case writeMergingPhase already set the gauge) or we
+			// are resuming after a crash, where the gauge starts at zero
+			// from prometheus default. Set it here for the resume case;
+			// the bootstrap-fallthrough case is a harmless idempotent
+			// re-set.
+			o.cfg.Metrics.setPhase(PhaseGaugeMerging)
+
+			// Re-run merge. Idempotent under partial completion: the
+			// restart-after-cleanup guard, per-source cursor, and
+			// idempotent discovery-row writes ensure a crash at any
+			// point in runMerge leaves the next start in a recoverable
+			// state. Spec §5.3.
+			if err := o.runMerge(ctx); err != nil {
+				return fmt.Errorf("orchestrator: merge: %w", err)
+			}
+
+			if err := o.writeSteadyStatePhase(); err != nil {
+				return err
+			}
+			if err := o.simulateCrash(ctx, crashpoint.AfterSteadyPhaseBeforeSteadyRun); err != nil {
+				return err
+			}
+
+			if o.cfg.BarrierAfterMerge != nil {
+				if err := o.cfg.BarrierAfterMerge(ctx); err != nil {
+					return fmt.Errorf("orchestrator: after-merge barrier: %w", err)
+				}
+			}
+
+			fallthrough
+		case lifecycle.PhaseSteadyState:
+			return o.runSteadyState(ctx)
+
+		default:
+			return fmt.Errorf("orchestrator: unrecognized phase %q", phase)
+		}
+	})
+}
+
+// withRewriteLock runs fn while holding the segment-rewrite mutex, so
+// delete-compaction and timestamp-import passes are mutually exclusive on the
+// tmp+fsync+rename of any segment file (design §3.3, §6 H). fn should be the
+// segment-mutating body of a pass; read-only preamble (sweeping the dir,
+// reconciling checksums) can run outside the lock.
+func (o *Orchestrator) withRewriteLock(fn func() error) error {
+	o.rewriteMu.Lock()
+	defer o.rewriteMu.Unlock()
+	return fn()
+}
+
+func (o *Orchestrator) simulateCrash(ctx context.Context, point crashpoint.Point) error {
+	if o.cfg.CrashInjector == nil {
+		return nil
+	}
+	return o.cfg.CrashInjector.SimulateCrash(ctx, point)
+}

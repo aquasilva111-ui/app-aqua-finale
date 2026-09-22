@@ -1,0 +1,3 @@
+# High Availability / Read-Scaling Clustering — Historical Exploration
+
+**Status: exploration only; not implemented.** The note evaluated archive replication/read scaling and measured cold Pebble rebuild, warm follower throughput, and manifest-open costs before committing to an architecture. Its working hypothesis favored shipping sealed immutable segments plus rebuilding or following metadata, but retained unresolved consistency, promotion, transport, and operational questions. References were `docs/README.md`, `segment/rewrite.go`, `internal/ingest/filename.go`, `internal/store/harebuild_bench_test.go`, and `internal/manifest/hamanifest_bench_test.go`.

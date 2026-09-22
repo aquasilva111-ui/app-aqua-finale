@@ -1,0 +1,748 @@
+package main
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"io"
+	"net/http"
+	"net/url"
+	"os"
+	"os/signal"
+	"strconv"
+	"strings"
+	"sync"
+	"sync/atomic"
+	"time"
+
+	"github.com/bluesky-social/jetstream/internal/format"
+	"github.com/bluesky-social/jetstream/internal/zstddict"
+	"github.com/coder/websocket"
+	"github.com/klauspost/compress/zstd"
+	"github.com/urfave/cli/v3"
+)
+
+// loadtestCommand is the legacy direct-websocket load tester: it opens many
+// raw /subscribe (v1) or /xrpc/network.bsky.jetstream.subscribeEvents (v2)
+// connections and prints throughput stats.
+// It does NOT use the jetstream client library; it exists to stress the server
+// websocket path directly.
+func loadtestCommand() *cli.Command {
+	return &cli.Command{
+		Name:  "loadtest",
+		Usage: "Open many raw websocket subscribers against a jetstream server and print load stats",
+		Flags: []cli.Flag{
+			&cli.StringFlag{
+				Name:  "url",
+				Usage: "Websocket URL, HTTP(S) URL, or host[:port] for the jetstream /subscribe endpoint",
+				Value: "ws://localhost:8080/subscribe",
+			},
+			&cli.IntFlag{
+				Name:    "concurrency",
+				Aliases: []string{"c"},
+				Usage:   "Number of concurrent websocket subscribers",
+				Value:   1,
+			},
+			&cli.DurationFlag{
+				Name:  "report-interval",
+				Usage: "How often to print summary statistics",
+				Value: 5 * time.Second,
+			},
+			&cli.DurationFlag{
+				Name:  "ramp-duration",
+				Usage: "Time over which subscribers are started",
+				Value: 10 * time.Second,
+			},
+			&cli.DurationFlag{
+				Name:  "duration",
+				Usage: "Optional total run duration; 0 runs until interrupted",
+				Value: 0,
+			},
+			&cli.DurationFlag{
+				Name:  "dial-timeout",
+				Usage: "Per-attempt websocket dial timeout",
+				Value: 10 * time.Second,
+			},
+			&cli.DurationFlag{
+				Name:  "reconnect-delay",
+				Usage: "Base delay before a failed subscriber reconnects",
+				Value: time.Second,
+			},
+			&cli.BoolFlag{
+				Name:  "compression",
+				Usage: "Offer RFC 7692 permessage-deflate (honored on /subscribe only; the v2 endpoint never negotiates it)",
+			},
+			&cli.BoolFlag{
+				Name:  "zstd",
+				Usage: "Opt into the v2 dictionary zstd: fetches the dictionary via getZstdDictionary, sends zstdDictionary=<id>, and decodes every frame (v2 URLs only; the v1 endpoint uses a different, legacy dictionary this tool does not embed)",
+			},
+			&cli.StringFlag{
+				Name:  "cursor",
+				Usage: "Optional cursor query parameter",
+			},
+			&cli.StringSliceFlag{
+				Name:  "kind",
+				Usage: "V2 event kind filter (commit, identity, account, or sync); may be repeated",
+			},
+			&cli.StringSliceFlag{
+				Name:  "wanted-collection",
+				Usage: "Collection filter to add as wantedCollections; may be repeated",
+			},
+			&cli.StringSliceFlag{
+				Name:  "wanted-did",
+				Usage: "DID filter to add as wantedDids; may be repeated",
+			},
+			&cli.IntFlag{
+				Name:  "max-message-size",
+				Usage: "Optional maxMessageSizeBytes query parameter and hello payload field",
+			},
+			&cli.BoolFlag{
+				Name:  "require-hello",
+				Usage: "Set requireHello=true and send one initial options_update frame after dialing",
+			},
+			&cli.IntFlag{
+				Name:  "read-limit",
+				Usage: "Maximum websocket message size accepted by the client",
+				Value: 10_000_000,
+			},
+		},
+		Action: func(ctx context.Context, cmd *cli.Command) error {
+			cfg := config{
+				rawURL:            cmd.String("url"),
+				concurrency:       cmd.Int("concurrency"),
+				reportInterval:    cmd.Duration("report-interval"),
+				rampDuration:      cmd.Duration("ramp-duration"),
+				duration:          cmd.Duration("duration"),
+				dialTimeout:       cmd.Duration("dial-timeout"),
+				reconnectDelay:    cmd.Duration("reconnect-delay"),
+				compression:       cmd.Bool("compression"),
+				zstd:              cmd.Bool("zstd"),
+				cursor:            cmd.String("cursor"),
+				kinds:             cmd.StringSlice("kind"),
+				wantedCollections: cmd.StringSlice("wanted-collection"),
+				wantedDIDs:        cmd.StringSlice("wanted-did"),
+				maxMessageSize:    cmd.Int("max-message-size"),
+				requireHello:      cmd.Bool("require-hello"),
+				readLimit:         int64(cmd.Int("read-limit")),
+				out:               cmd.Root().Writer,
+			}
+			if cfg.out == nil {
+				cfg.out = os.Stdout
+			}
+			if err := cfg.validate(); err != nil {
+				return err
+			}
+
+			if cfg.zstd {
+				if err := resolveZstdDict(ctx, &cfg); err != nil {
+					return err
+				}
+			}
+
+			wsURL, err := subscribeURL(cfg)
+			if err != nil {
+				return err
+			}
+			cfg.url = wsURL
+
+			sigCtx, stop := signal.NotifyContext(ctx, os.Interrupt)
+			defer stop()
+			runCtx := sigCtx
+			var cancel context.CancelFunc
+			if cfg.duration > 0 {
+				runCtx, cancel = context.WithTimeout(sigCtx, cfg.duration)
+				defer cancel()
+			}
+
+			return run(runCtx, cfg)
+		},
+	}
+}
+
+type config struct {
+	rawURL            string
+	url               string
+	concurrency       int
+	reportInterval    time.Duration
+	rampDuration      time.Duration
+	duration          time.Duration
+	dialTimeout       time.Duration
+	reconnectDelay    time.Duration
+	compression       bool
+	zstd              bool
+	zstdDictID        uint32
+	zstdDict          []byte
+	cursor            string
+	kinds             []string
+	wantedCollections []string
+	wantedDIDs        []string
+	maxMessageSize    int
+	requireHello      bool
+	readLimit         int64
+	out               io.Writer
+
+	// dial establishes a websocket connection. It defaults to websocket.Dial
+	// in run when nil; tests inject a stub to exercise dial error handling
+	// without a live server.
+	dial dialFunc
+}
+
+// dialFunc matches the signature of websocket.Dial so the dialer can be
+// swapped out in tests.
+type dialFunc func(context.Context, string, *websocket.DialOptions) (*websocket.Conn, *http.Response, error)
+
+func (c config) validate() error {
+	if c.concurrency <= 0 {
+		return fmt.Errorf("concurrency must be > 0")
+	}
+	if c.reportInterval <= 0 {
+		return fmt.Errorf("report-interval must be > 0")
+	}
+	if c.rampDuration < 0 {
+		return fmt.Errorf("ramp-duration must be >= 0")
+	}
+	if c.duration < 0 {
+		return fmt.Errorf("duration must be >= 0")
+	}
+	if c.dialTimeout <= 0 {
+		return fmt.Errorf("dial-timeout must be > 0")
+	}
+	if c.reconnectDelay < 0 {
+		return fmt.Errorf("reconnect-delay must be >= 0")
+	}
+	if c.maxMessageSize < 0 {
+		return fmt.Errorf("max-message-size must be >= 0")
+	}
+	if c.readLimit <= 0 {
+		return fmt.Errorf("read-limit must be > 0")
+	}
+	if c.zstd && c.compression {
+		return fmt.Errorf("--zstd and --compression are mutually exclusive (the server rejects both at once)")
+	}
+	return nil
+}
+
+// dictionaryURL derives the getZstdDictionary HTTP URL from the websocket
+// subscribe URL (ws->http scheme, XRPC path).
+func dictionaryURL(wsURL string) (string, error) {
+	u, err := url.Parse(wsURL)
+	if err != nil {
+		return "", err
+	}
+	switch u.Scheme {
+	case "ws":
+		u.Scheme = "http"
+	case "wss":
+		u.Scheme = "https"
+	}
+	u.Path = "/xrpc/network.bsky.jetstream.getZstdDictionary"
+	u.RawQuery = ""
+	return u.String(), nil
+}
+
+func subscribeURL(c config) (string, error) {
+	raw := strings.TrimSpace(c.rawURL)
+	if raw == "" {
+		return "", fmt.Errorf("url is required")
+	}
+	if !strings.Contains(raw, "://") {
+		raw = "ws://" + raw
+	}
+
+	u, err := url.Parse(raw)
+	if err != nil {
+		return "", fmt.Errorf("parse url: %w", err)
+	}
+	switch u.Scheme {
+	case "http":
+		u.Scheme = "ws"
+	case "https":
+		u.Scheme = "wss"
+	case "ws", "wss":
+	default:
+		return "", fmt.Errorf("unsupported url scheme %q", u.Scheme)
+	}
+	if u.Host == "" {
+		return "", fmt.Errorf("url host is required")
+	}
+	if u.Path == "" || u.Path == "/" {
+		u.Path = "/subscribe"
+	}
+	if len(c.kinds) > 0 && !isV2Path(u.Path) {
+		return "", fmt.Errorf("--kind requires a /xrpc/network.bsky.jetstream.subscribeEvents URL; v1 /subscribe has no kind filter")
+	}
+
+	q := u.Query()
+	if c.zstd {
+		// v2-only: the v1 endpoint compresses with the legacy embedded
+		// dictionary, which getZstdDictionary does not serve, so frames
+		// would be undecodable here.
+		if !strings.HasSuffix(u.Path, "/xrpc/network.bsky.jetstream.subscribeEvents") {
+			return "", fmt.Errorf("--zstd requires a /xrpc/network.bsky.jetstream.subscribeEvents URL (the v1 endpoint uses the legacy dictionary this tool does not embed)")
+		}
+		if c.zstdDictID == 0 {
+			return "", fmt.Errorf("internal: zstd dictionary ID not resolved before URL build")
+		}
+		q.Set("zstdDictionary", strconv.FormatUint(uint64(c.zstdDictID), 10))
+	}
+	if c.cursor != "" {
+		q.Set("cursor", c.cursor)
+	}
+	// The two endpoints use different filter parameter dialects: v1 keeps
+	// the legacy wanted* names, the v2 lexicon dropped the prefix (and
+	// rejects the legacy names with a 400 rather than silently ignoring
+	// them).
+	colParam, didParam := "wantedCollections", "wantedDids"
+	if isV2Path(u.Path) {
+		colParam, didParam = "collections", "dids"
+		for _, kind := range c.kinds {
+			if kind != "" {
+				q.Add("kinds", kind)
+			}
+		}
+	}
+	for _, v := range c.wantedCollections {
+		if v != "" {
+			q.Add(colParam, v)
+		}
+	}
+	for _, v := range c.wantedDIDs {
+		if v != "" {
+			q.Add(didParam, v)
+		}
+	}
+	if c.maxMessageSize > 0 {
+		q.Set("maxMessageSizeBytes", strconv.Itoa(c.maxMessageSize))
+	}
+	if c.requireHello {
+		if isV2Path(u.Path) {
+			return "", fmt.Errorf("--require-hello is a /subscribe (v1) feature; the v2 endpoint is server-push only")
+		}
+		q.Set("requireHello", "true")
+	}
+	u.RawQuery = q.Encode()
+	return u.String(), nil
+}
+
+// isV2Path reports whether the URL path targets the proposal-0015 v2
+// stream endpoint.
+func isV2Path(path string) bool {
+	return strings.HasSuffix(path, "/xrpc/network.bsky.jetstream.subscribeEvents")
+}
+
+type counters struct {
+	started       atomic.Int64
+	connected     atomic.Int64
+	events        atomic.Uint64
+	bytes         atomic.Uint64
+	dials         atomic.Uint64
+	dialErrors    atomic.Uint64
+	helloErrors   atomic.Uint64
+	readErrors    atomic.Uint64
+	cleanCloses   atomic.Uint64
+	nonTextFrames atomic.Uint64
+	zstdErrors    atomic.Uint64
+	rawBytes      atomic.Uint64
+	reconnects    atomic.Uint64
+	lastErrMu     sync.Mutex
+	lastErr       string
+}
+
+func (s *counters) setLastError(format string, args ...any) {
+	s.lastErrMu.Lock()
+	defer s.lastErrMu.Unlock()
+	s.lastErr = fmt.Sprintf(format, args...)
+}
+
+func (s *counters) lastError() string {
+	s.lastErrMu.Lock()
+	defer s.lastErrMu.Unlock()
+	return s.lastErr
+}
+
+func run(ctx context.Context, cfg config) error {
+	if cfg.dial == nil {
+		cfg.dial = websocket.Dial
+	}
+	stats := &counters{}
+	start := time.Now()
+	runCtx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
+	_, _ = fmt.Fprintf(cfg.out, "target=%d url=%s report_interval=%s ramp_duration=%s compression=%t\n",
+		cfg.concurrency, cfg.url, cfg.reportInterval, cfg.rampDuration, cfg.compression)
+
+	reportDone := make(chan struct{})
+	go func() {
+		defer close(reportDone)
+		report(runCtx, cfg, stats, start)
+	}()
+
+	var wg sync.WaitGroup
+	errCh := make(chan error, 1)
+	launchDelay := time.Duration(0)
+	if cfg.concurrency > 1 && cfg.rampDuration > 0 {
+		launchDelay = cfg.rampDuration / time.Duration(cfg.concurrency-1)
+	}
+
+	for i := 0; i < cfg.concurrency; i++ {
+		select {
+		case <-runCtx.Done():
+			goto wait
+		default:
+		}
+		stats.started.Add(1)
+		wg.Add(1)
+		go func(id int) {
+			defer wg.Done()
+			if err := consume(runCtx, cfg, stats, id); err != nil {
+				select {
+				case errCh <- err:
+					cancel()
+				default:
+				}
+			}
+		}(i)
+		if launchDelay > 0 && i < cfg.concurrency-1 {
+			select {
+			case <-runCtx.Done():
+				goto wait
+			case <-time.After(launchDelay):
+			}
+		}
+	}
+
+wait:
+	<-runCtx.Done()
+	wg.Wait()
+	<-reportDone
+	printReport(cfg.out, "final", time.Since(start), cfg.concurrency, stats, reportSnapshot{}, time.Since(start))
+	select {
+	case err := <-errCh:
+		return err
+	default:
+		return nil
+	}
+}
+
+func consume(ctx context.Context, cfg config, stats *counters, id int) error {
+	// One decoder per subscriber goroutine: DecodeAll on a shared decoder is
+	// safe but serializes on internal state under heavy fanout; per-goroutine
+	// decoders keep the loadtest measuring the server, not the client.
+	var dec *zstd.Decoder
+	if cfg.zstd {
+		// Cap decoded output at the read limit: SetReadLimit bounds only the
+		// COMPRESSED frame, and the library's default max decoded size is
+		// 64 GiB — a hostile/buggy server could otherwise expand a small
+		// frame far past --read-limit and OOM the tool.
+		d, err := zstd.NewReader(nil, zstd.WithDecoderDicts(cfg.zstdDict), zstd.WithDecoderConcurrency(1),
+			zstd.WithDecoderMaxMemory(uint64(cfg.readLimit)))
+		if err != nil {
+			return fmt.Errorf("subscriber %d: build zstd decoder: %w", id, err)
+		}
+		defer d.Close()
+		dec = d
+	}
+	firstAttempt := true
+	for {
+		if err := ctx.Err(); err != nil {
+			return nil //nolint:nilerr // context cancellation is a clean shutdown, not an error
+		}
+		if !firstAttempt {
+			if !sleepReconnect(ctx, cfg.reconnectDelay, id) {
+				return nil
+			}
+			stats.reconnects.Add(1)
+		}
+		firstAttempt = false
+
+		dialCtx, cancel := context.WithTimeout(ctx, cfg.dialTimeout)
+		conn, resp, err := cfg.dial(dialCtx, cfg.url, dialOptions(cfg))
+		cancel()
+		closeResponse(resp)
+		if err != nil {
+			if ctx.Err() != nil {
+				return nil //nolint:nilerr // dial failed because the run context was cancelled; clean shutdown
+			}
+			stats.dialErrors.Add(1)
+			if resp != nil {
+				stats.setLastError("dial: http %d: %v", resp.StatusCode, err)
+				return fmt.Errorf("subscriber %d dial: http %d: %w", id, resp.StatusCode, err)
+			} else {
+				stats.setLastError("dial: %v", err)
+				return fmt.Errorf("subscriber %d dial: %w", id, err)
+			}
+		}
+
+		stats.dials.Add(1)
+		stats.connected.Add(1)
+		conn.SetReadLimit(cfg.readLimit)
+
+		if cfg.requireHello {
+			if err := sendHello(ctx, conn, cfg); err != nil {
+				stats.helloErrors.Add(1)
+				stats.setLastError("hello: %v", err)
+				stats.connected.Add(-1)
+				_ = conn.Close(websocket.StatusNormalClosure, "hello failed")
+				return fmt.Errorf("subscriber %d hello: %w", id, err)
+			}
+		}
+
+		readLoop(ctx, conn, cfg, stats, dec)
+		stats.connected.Add(-1)
+		_ = conn.CloseNow()
+	}
+}
+
+func dialOptions(cfg config) *websocket.DialOptions {
+	opts := &websocket.DialOptions{}
+	if cfg.compression {
+		opts.CompressionMode = websocket.CompressionContextTakeover
+	}
+	return opts
+}
+
+func sendHello(ctx context.Context, conn *websocket.Conn, cfg config) error {
+	payload := optionsUpdatePayload{
+		WantedCollections:   cfg.wantedCollections,
+		WantedDIDs:          cfg.wantedDIDs,
+		MaxMessageSizeBytes: cfg.maxMessageSize,
+	}
+	body, err := json.Marshal(subscriberMessage{
+		Type:    "options_update",
+		Payload: payload,
+	})
+	if err != nil {
+		return err
+	}
+	writeCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	return conn.Write(writeCtx, websocket.MessageText, body)
+}
+
+type subscriberMessage struct {
+	Type    string               `json:"type"`
+	Payload optionsUpdatePayload `json:"payload"`
+}
+
+type optionsUpdatePayload struct {
+	WantedCollections   []string `json:"wantedCollections"`
+	WantedDIDs          []string `json:"wantedDids"`
+	MaxMessageSizeBytes int      `json:"maxMessageSizeBytes"`
+}
+
+func readLoop(ctx context.Context, conn *websocket.Conn, cfg config, stats *counters, dec *zstd.Decoder) {
+	for {
+		msgType, payload, err := conn.Read(ctx)
+		if err != nil {
+			if ctx.Err() != nil {
+				return
+			}
+			status := websocket.CloseStatus(err)
+			if status == websocket.StatusNormalClosure || status == websocket.StatusGoingAway {
+				stats.cleanCloses.Add(1)
+				return
+			}
+			stats.readErrors.Add(1)
+			stats.setLastError("read: %v", err)
+			return
+		}
+		stats.bytes.Add(uint64(len(payload)))
+		switch {
+		case dec != nil && msgType == websocket.MessageBinary:
+			// dict-zstd frame: decode so the client pays (and the run
+			// measures) the real decompression cost, and events count.
+			raw, derr := dec.DecodeAll(payload, nil)
+			if derr != nil {
+				stats.zstdErrors.Add(1)
+				stats.setLastError("zstd decode: %v", derr)
+				continue
+			}
+			stats.rawBytes.Add(uint64(len(raw)))
+			stats.events.Add(1)
+		case msgType == websocket.MessageText:
+			stats.rawBytes.Add(uint64(len(payload)))
+			stats.events.Add(1)
+		default:
+			stats.nonTextFrames.Add(1)
+		}
+	}
+}
+
+func closeResponse(resp *http.Response) {
+	if resp != nil && resp.Body != nil {
+		_ = resp.Body.Close()
+	}
+}
+
+func sleepReconnect(ctx context.Context, base time.Duration, id int) bool {
+	if base <= 0 {
+		return true
+	}
+	delay := base + time.Duration(id%100)*10*time.Millisecond
+	timer := time.NewTimer(delay)
+	defer timer.Stop()
+	select {
+	case <-ctx.Done():
+		return false
+	case <-timer.C:
+		return true
+	}
+}
+
+type reportSnapshot struct {
+	events uint64
+	bytes  uint64
+}
+
+func report(ctx context.Context, cfg config, stats *counters, start time.Time) {
+	ticker := time.NewTicker(cfg.reportInterval)
+	defer ticker.Stop()
+
+	lastAt := start
+	last := reportSnapshot{}
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case now := <-ticker.C:
+			interval := now.Sub(lastAt)
+			last = printReport(cfg.out, "stats", now.Sub(start), cfg.concurrency, stats, last, interval)
+			lastAt = now
+		}
+	}
+}
+
+func printReport(
+	w io.Writer,
+	label string,
+	elapsed time.Duration,
+	target int,
+	stats *counters,
+	last reportSnapshot,
+	interval time.Duration,
+) reportSnapshot {
+	events := stats.events.Load()
+	bytes := stats.bytes.Load()
+	deltaEvents := events - last.events
+	deltaBytes := bytes - last.bytes
+
+	seconds := interval.Seconds()
+	if seconds <= 0 {
+		seconds = 1
+	}
+	eps := float64(deltaEvents) / seconds
+	bps := float64(deltaBytes) / seconds
+
+	avgBytes := uint64(0)
+	if events > 0 {
+		avgBytes = bytes / events
+	}
+
+	lastErr := stats.lastError()
+	if lastErr == "" {
+		lastErr = "none"
+	}
+
+	zstdSuffix := ""
+	if raw := stats.rawBytes.Load(); raw > 0 && raw != bytes {
+		zstdSuffix = fmt.Sprintf(" raw_bytes=%s ratio=%.2fx zstd_err=%s",
+			format.Bytes(int64(raw)), float64(raw)/float64(bytes), formatCount(stats.zstdErrors.Load()))
+	}
+	_, _ = fmt.Fprintf(w,
+		"%s elapsed=%s conns=%d/%d started=%d events=%s eps=%.0f bytes=%s throughput=%s/s avg_event=%s dials=%s dial_err=%s reconnects=%s read_err=%s hello_err=%s clean_close=%s non_text=%s last_err=%s%s\n",
+		label,
+		roundDuration(elapsed),
+		stats.connected.Load(),
+		target,
+		stats.started.Load(),
+		formatCount(events),
+		eps,
+		format.Bytes(int64(bytes)),
+		format.Bytes(int64(bps)),
+		format.Bytes(int64(avgBytes)),
+		formatCount(stats.dials.Load()),
+		formatCount(stats.dialErrors.Load()),
+		formatCount(stats.reconnects.Load()),
+		formatCount(stats.readErrors.Load()),
+		formatCount(stats.helloErrors.Load()),
+		formatCount(stats.cleanCloses.Load()),
+		formatCount(stats.nonTextFrames.Load()),
+		lastErr,
+		zstdSuffix,
+	)
+
+	return reportSnapshot{events: events, bytes: bytes}
+}
+
+func roundDuration(d time.Duration) time.Duration {
+	if d < time.Second {
+		return d.Round(time.Millisecond)
+	}
+	return d.Round(time.Second)
+}
+
+func formatCount[T ~int64 | ~uint64](n T) string {
+	s := fmt.Sprintf("%d", n)
+	if len(s) <= 3 {
+		return s
+	}
+	var b strings.Builder
+	pre := len(s) % 3
+	if pre == 0 {
+		pre = 3
+	}
+	b.WriteString(s[:pre])
+	for i := pre; i < len(s); i += 3 {
+		b.WriteByte(',')
+		b.WriteString(s[i : i+3])
+	}
+	return b.String()
+}
+
+// resolveZstdDict fetches the server's current compression dictionary over
+// HTTP (getZstdDictionary) and stores the blob + parsed ID on cfg. Loadtest
+// is a measurement tool, so unlike the library client a fetch failure is a
+// hard error — silently falling back would measure the wrong scheme.
+func resolveZstdDict(ctx context.Context, cfg *config) error {
+	wsURL, err := subscribeURLForDict(*cfg)
+	if err != nil {
+		return err
+	}
+	dictURL, err := dictionaryURL(wsURL)
+	if err != nil {
+		return err
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, dictURL, nil)
+	if err != nil {
+		return err
+	}
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("fetch zstd dictionary: %w", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, 1024))
+		return fmt.Errorf("fetch zstd dictionary: http %d: %s", resp.StatusCode, strings.TrimSpace(string(body)))
+	}
+	dict, err := io.ReadAll(io.LimitReader(resp.Body, 8<<20))
+	if err != nil {
+		return fmt.Errorf("read zstd dictionary: %w", err)
+	}
+	id, err := zstddict.ParseID(dict)
+	if err != nil {
+		return fmt.Errorf("parse zstd dictionary: %w", err)
+	}
+	cfg.zstdDict = dict
+	cfg.zstdDictID = id
+	_, _ = fmt.Fprintf(cfg.out, "fetched zstd dictionary id=%d (%d bytes)\n", id, len(dict))
+	return nil
+}
+
+// subscribeURLForDict normalizes the raw URL exactly as subscribeURL does,
+// without requiring the dictionary to be resolved yet.
+func subscribeURLForDict(c config) (string, error) {
+	c.zstd = false // avoid the dict-ID requirement during normalization
+	return subscribeURL(c)
+}

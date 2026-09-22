@@ -1,0 +1,227 @@
+import assert from 'node:assert'
+import { DAY, HOUR, MINUTE } from '@atproto/common'
+import type { DidString, UriString } from '@atproto/lex'
+import type { OzoneEnvironment } from './env.js'
+
+// off-config but still from env:
+// logging: LOG_LEVEL, LOG_SYSTEMS, LOG_ENABLED, LOG_DESTINATION
+
+export const envToCfg = (env: OzoneEnvironment): OzoneConfig => {
+  const port = env.port ?? 3000
+  assert(env.publicUrl, 'publicUrl is required')
+  assert(env.serverDid, 'serverDid is required')
+  const serviceCfg: OzoneConfig['service'] = {
+    port,
+    // Intentionally has no default: metrics are opt-in. When unset, the metrics
+    // server is never started (off by default for 3p labelers/self-hosters).
+    metricsPort: env.metricsPort,
+    // Separate opt-in metrics port for the daemon process (runs in its own
+    // container, so it needs its own scrape target). No default for the same reason.
+    daemonMetricsPort: env.daemonMetricsPort,
+    publicUrl: env.publicUrl,
+    did: env.serverDid,
+    version: env.version,
+    devMode: env.devMode,
+    serviceRecordCacheTTL: env.serviceRecordCacheTTL ?? 5 * MINUTE, // default 5 mins
+  }
+
+  assert(env.dbPostgresUrl, 'dbPostgresUrl is required')
+  const dbCfg: OzoneConfig['db'] = {
+    postgresUrl: env.dbPostgresUrl,
+    postgresSchema: env.dbPostgresSchema,
+    poolSize: env.dbPoolSize,
+    poolMaxUses: env.dbPoolMaxUses,
+    poolIdleTimeoutMs: env.dbPoolIdleTimeoutMs,
+    materializedViewRefreshIntervalMs: env.dbMaterializedViewRefreshIntervalMs,
+    materializedViewRefreshTimeoutMs: env.dbMaterializedViewRefreshTimeoutMs,
+    teamProfileRefreshIntervalMs: env.dbTeamProfileRefreshIntervalMs,
+  }
+
+  assert(env.appviewUrl, 'appviewUrl is required')
+  assert(env.appviewDid, 'appviewDid is required')
+  const appviewCfg: OzoneConfig['appview'] = {
+    url: env.appviewUrl,
+    did: env.appviewDid,
+    pushEvents: !!env.appviewPushEvents,
+  }
+
+  let pdsCfg: OzoneConfig['pds'] = null
+  if (env.pdsUrl || env.pdsDid) {
+    assert(env.pdsUrl, 'pdsUrl is required')
+    assert(env.pdsDid, 'pdsDid is required')
+    pdsCfg = {
+      url: env.pdsUrl,
+      did: env.pdsDid,
+    }
+  }
+
+  let chatCfg: OzoneConfig['chat'] = null
+  if (env.chatUrl || env.chatDid) {
+    assert(env.chatUrl, 'chatUrl is required when chatDid is provided')
+    assert(env.chatDid, 'chatDid is required when chatUrl is provided')
+    chatCfg = {
+      url: env.chatUrl,
+      did: env.chatDid,
+    }
+  }
+
+  const cdnCfg: OzoneConfig['cdn'] = {
+    paths: env.cdnPaths,
+  }
+
+  assert(env.didPlcUrl, 'didPlcUrl is required')
+  const identityCfg: OzoneConfig['identity'] = {
+    plcUrl: env.didPlcUrl,
+    cacheMaxTTL: env.didCacheMaxTTL ?? DAY,
+    cacheStaleTTL: env.didCacheStaleTTL ?? HOUR,
+  }
+
+  const blobDivertServiceCfg =
+    env.blobDivertUrl && env.blobDivertAdminPassword
+      ? {
+          url: env.blobDivertUrl,
+          adminPassword: env.blobDivertAdminPassword,
+        }
+      : null
+  const accessCfg: OzoneConfig['access'] = {
+    admins: env.adminDids,
+    moderators: env.moderatorDids,
+    triage: env.triageDids,
+  }
+  const verifierCfg: OzoneConfig['verifier'] =
+    env.verifierUrl && env.verifierDid && env.verifierPassword
+      ? {
+          url: env.verifierUrl,
+          did: env.verifierDid,
+          password: env.verifierPassword,
+          issuersToIndex: env.verifierIssuersToIndex,
+        }
+      : null
+
+  const assignmentsCfg: OzoneConfig['assignments'] = {
+    queueDurationMs: env.assignmentQueueDurationMs ?? 5 * MINUTE,
+    reportDurationMs: env.assignmentReportDurationMs ?? 5 * MINUTE,
+  }
+
+  const statsCfg: OzoneConfig['stats'] = {
+    computerIntervalMinutes: env.statsComputerIntervalMinutes ?? 15,
+  }
+
+  return {
+    service: serviceCfg,
+    db: dbCfg,
+    appview: appviewCfg,
+    pds: pdsCfg,
+    chat: chatCfg,
+    cdn: cdnCfg,
+    identity: identityCfg,
+    blobDivert: blobDivertServiceCfg,
+    access: accessCfg,
+    verifier: verifierCfg,
+    assignments: assignmentsCfg,
+    stats: statsCfg,
+    jetstreamUrl: env.jetstreamUrl,
+  }
+}
+
+export type OzoneConfig = {
+  service: ServiceConfig
+  db: DatabaseConfig
+  appview: AppviewConfig
+  pds: PdsConfig | null
+  chat: ChatConfig | null
+  cdn: CdnConfig
+  identity: IdentityConfig
+  blobDivert: BlobDivertConfig | null
+  access: AccessConfig
+  assignments: AssignmentsConfig
+  stats: StatsConfig
+  jetstreamUrl?: string
+  verifier: VerifierConfig | null
+}
+
+export type StatsConfig = {
+  /**
+   * Minutes between stats computer cycles.
+   * Defaults to 15. Minimum is 1.
+   * Set to -1 to disable the stats computer.
+   */
+  computerIntervalMinutes: number
+}
+
+export type ServiceConfig = {
+  port: number
+  // Port for the separate, pull-based Prometheus /metrics server. Optional and
+  // off by default: when undefined, no metrics server is started and no metrics
+  // are collected. Bluesky's first-party deploy sets OZONE_METRICS_PORT to opt in.
+  metricsPort?: number
+  // Metrics port for the daemon process (separate container/scrape target).
+  // Optional and off by default; set via OZONE_DAEMON_METRICS_PORT.
+  daemonMetricsPort?: number
+  publicUrl: string
+  did: DidString
+  version?: string
+  devMode?: boolean
+  serviceRecordCacheTTL: number // in ms, default 5 mins
+}
+
+export type BlobDivertConfig = {
+  url: UriString
+  adminPassword: string
+}
+
+export type DatabaseConfig = {
+  postgresUrl: string
+  postgresSchema?: string
+  poolSize?: number
+  poolMaxUses?: number
+  poolIdleTimeoutMs?: number
+  materializedViewRefreshIntervalMs?: number
+  materializedViewRefreshTimeoutMs?: number
+  teamProfileRefreshIntervalMs?: number
+}
+
+export type AppviewConfig = {
+  url: UriString
+  did: DidString
+  pushEvents: boolean
+}
+
+export type PdsConfig = {
+  url: UriString
+  did: DidString
+}
+
+export type ChatConfig = {
+  url: UriString
+  did: DidString
+}
+
+export type CdnConfig = {
+  paths?: string[]
+}
+
+export type IdentityConfig = {
+  plcUrl: string
+  cacheStaleTTL: number
+  cacheMaxTTL: number
+}
+
+export type AccessConfig = {
+  admins: DidString[]
+  moderators: DidString[]
+  triage: DidString[]
+}
+
+export type VerifierConfig = {
+  url: UriString
+  did: DidString
+  password: string
+  jetstreamUrl?: string
+  issuersToIndex?: string[]
+}
+
+export type AssignmentsConfig = {
+  queueDurationMs: number
+  reportDurationMs: number
+}

@@ -1,0 +1,143 @@
+package xrpcapi
+
+import (
+	"bytes"
+	"encoding/json"
+	"log/slog"
+	"net/http"
+	"os"
+	"path/filepath"
+	"testing"
+
+	"github.com/bluesky-social/jetstream/internal/ingest"
+	"github.com/bluesky-social/jetstream/internal/manifest"
+	"github.com/bluesky-social/jetstream/segment"
+	"github.com/stretchr/testify/require"
+)
+
+// doGet issues a context-bound GET (the linter forbids http.Get/NewRequest
+// without a context, and it also fails the test fast if the server hangs).
+func doGet(t *testing.T, url string) *http.Response {
+	t.Helper()
+	return doGetWith(t, url, nil)
+}
+
+// doGetWith is doGet with an optional hook to set request headers (Range,
+// If-None-Match, ...).
+func doGetWith(t *testing.T, url string, customize func(*http.Request)) *http.Response {
+	t.Helper()
+	req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, url, nil)
+	require.NoError(t, err)
+	if customize != nil {
+		customize(req)
+	}
+	resp, err := http.DefaultClient.Do(req)
+	require.NoError(t, err)
+	return resp
+}
+
+func doHead(t *testing.T, url string) *http.Response {
+	t.Helper()
+	return doHeadWith(t, url, nil)
+}
+
+func doHeadWith(t *testing.T, url string, customize func(*http.Request)) *http.Response {
+	t.Helper()
+	req, err := http.NewRequestWithContext(t.Context(), http.MethodHead, url, nil)
+	require.NoError(t, err)
+	if customize != nil {
+		customize(req)
+	}
+	resp, err := http.DefaultClient.Do(req)
+	require.NoError(t, err)
+	return resp
+}
+
+func doPostJSON(t *testing.T, url string, body any) *http.Response {
+	t.Helper()
+	b, err := json.Marshal(body)
+	require.NoError(t, err)
+	req, err := http.NewRequestWithContext(t.Context(), http.MethodPost, url, bytes.NewReader(b))
+	require.NoError(t, err)
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := http.DefaultClient.Do(req)
+	require.NoError(t, err)
+	return resp
+}
+
+// writeSealedSegment writes one sealed seg_<idx>.jss into dir with a few
+// events and returns its absolute path.
+func writeSealedSegment(t *testing.T, dir string, idx uint64, seqStart uint64) string {
+	t.Helper()
+	path := filepath.Join(dir, ingest.SegmentFilename(idx))
+	w, err := segment.New(segment.Config{Path: path, MaxEventsPerBlock: 4096})
+	require.NoError(t, err)
+	for i := range uint64(4) {
+		_, err = w.Append(segment.Event{
+			Seq:         seqStart + i,
+			WitnessedAt: int64(1_730_000_000_000_000 + (seqStart+i)*1_000),
+			Kind:        segment.KindCreate,
+			DID:         "did:plc:test",
+			Collection:  "app.bsky.feed.post",
+			Rkey:        "rkey",
+			Rev:         "rev",
+			Payload:     []byte{0xa0},
+		})
+		require.NoError(t, err)
+	}
+	_, err = w.Seal()
+	require.NoError(t, err)
+	return path
+}
+
+// newTestServer seeds n sealed segments (indices 0..n-1) and returns an
+// xrpcapi server backed by a real manifest plus the segments dir.
+func newTestServer(t *testing.T, n int) (*Server, string) {
+	t.Helper()
+	dir := t.TempDir()
+	for i := range n {
+		writeSealedSegment(t, dir, uint64(i), uint64(i*4+1))
+	}
+	m, err := manifest.Open(manifest.Options{SegmentsDir: dir, Logger: slog.Default()})
+	require.NoError(t, err)
+	return New(Config{Src: m, Logger: slog.Default()}), dir
+}
+
+// writeSealedSegmentBlocks writes a sealed segment at index idx with blockCount
+// blocks of perBlock events each (seq starting at seqStart) and returns its path.
+func writeSealedSegmentBlocks(t testing.TB, dir string, idx, seqStart uint64, perBlock, blockCount int) string {
+	t.Helper()
+	path := filepath.Join(dir, ingest.SegmentFilename(idx))
+	w, err := segment.New(segment.Config{Path: path, MaxEventsPerBlock: perBlock})
+	require.NoError(t, err)
+	seq := seqStart
+	for b := range blockCount {
+		for range perBlock {
+			_, err = w.Append(segment.Event{
+				Seq: seq, WitnessedAt: int64(1_730_000_000_000_000 + seq*1_000),
+				Kind: segment.KindCreate, DID: "did:plc:test",
+				Collection: "app.bsky.feed.post", Rkey: "rkey", Rev: "rev",
+				Payload: []byte{0xa0},
+			})
+			require.NoError(t, err)
+			seq++
+		}
+		// Roll the just-filled pending buffer into a sealed block. The final
+		// block is flushed by Seal, so only flush between blocks here;
+		// flushing after the last block would emit a spurious empty block.
+		if b < blockCount-1 {
+			require.NoError(t, w.Flush())
+		}
+	}
+	_, err = w.Seal()
+	require.NoError(t, err)
+	return path
+}
+
+// rawFile reads a segment file's bytes for byte-identical comparison.
+func rawFile(t *testing.T, path string) []byte {
+	t.Helper()
+	b, err := os.ReadFile(path)
+	require.NoError(t, err)
+	return b
+}

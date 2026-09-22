@@ -1,0 +1,202 @@
+import { Timestamp } from '@bufbuild/protobuf'
+import type { ServiceImpl } from '@connectrpc/connect'
+import { sql } from 'kysely'
+import { keyBy } from '@atproto/common'
+import { lexParse } from '@atproto/lex'
+import type { app } from '../../../lexicons/index.js'
+import type { Service } from '../../../proto/bsky_connect.js'
+import {
+  FilterableNotificationPreference,
+  NotificationInclude,
+  NotificationPreference,
+  NotificationPreferences,
+} from '../../../proto/bsky_pb.js'
+import { Namespaces } from '../../../stash.js'
+import type { Database } from '../db/index.js'
+import { IsoSortAtKey } from '../db/pagination.js'
+import { countAll, notSoftDeletedClause } from '../db/util.js'
+
+export default (db: Database): Partial<ServiceImpl<typeof Service>> => ({
+  async getNotifications(req) {
+    const { actorDid, limit, cursor } = req
+    const { ref } = db.db.dynamic
+
+    let builder = db.db
+      .selectFrom('notification as notif')
+      .where('notif.did', '=', actorDid)
+      .where((eb) =>
+        eb.or([
+          eb('reasonSubject', 'is', null),
+          eb.exists(
+            db.db
+              .selectFrom('record as subject')
+              .selectAll()
+              .whereRef('subject.uri', '=', ref('notif.reasonSubject')),
+          ),
+        ]),
+      )
+      .select([
+        'notif.author as authorDid',
+        'notif.recordUri as uri',
+        'notif.recordCid as cid',
+        'notif.reason as reason',
+        'notif.reasonSubject as reasonSubject',
+        'notif.sortAt as sortAt',
+      ])
+
+    const key = new IsoSortAtKey(ref('notif.sortAt'))
+    builder = key.paginate(builder, {
+      cursor,
+      limit,
+    })
+
+    const page = key.page(await builder.execute(), limit)
+    const notifications = page.items.map((notif) => ({
+      recipientDid: actorDid,
+      uri: notif.uri,
+      reason: notif.reason,
+      reasonSubject: notif.reasonSubject ?? undefined,
+      timestamp: Timestamp.fromDate(new Date(notif.sortAt)),
+    }))
+    return {
+      notifications,
+      cursor: page.cursor,
+    }
+  },
+
+  async getNotificationSeen(req) {
+    const { actorDid } = req
+    const res = await db.db
+      .selectFrom('actor_state')
+      .where('did', '=', actorDid)
+      .selectAll()
+      .executeTakeFirst()
+    if (!res) {
+      return {}
+    }
+    return {
+      timestamp: Timestamp.fromDate(new Date(res.lastSeenNotifs)),
+    }
+  },
+
+  async getUnreadNotificationCount(req) {
+    const { actorDid } = req
+    const { ref } = db.db.dynamic
+    const lastSeenRes = await db.db
+      .selectFrom('actor_state')
+      .where('did', '=', actorDid)
+      .selectAll()
+      .executeTakeFirst()
+    const lastSeen = lastSeenRes?.lastSeenNotifs
+
+    const result = await db.db
+      .selectFrom('notification')
+      .select(countAll.as('count'))
+      .innerJoin('actor', 'actor.did', 'notification.did')
+      .leftJoin('actor_state', 'actor_state.did', 'actor.did')
+      .innerJoin('record', 'record.uri', 'notification.recordUri')
+      .where(notSoftDeletedClause(ref('record')))
+      .where(notSoftDeletedClause(ref('actor')))
+      // Ensure to hit notification_did_sortat_idx, handling case where lastSeenNotifs is null.
+      .where('notification.did', '=', actorDid)
+      .where('notification.sortAt', '>', lastSeen ?? '')
+      .executeTakeFirst()
+
+    return {
+      count: result?.count,
+    }
+  },
+
+  async updateNotificationSeen(req) {
+    const { actorDid, timestamp } = req
+    if (!timestamp) {
+      return
+    }
+    const timestampIso = timestamp.toDate().toISOString()
+    const { ref } = db.db.dynamic
+    await db.db
+      .insertInto('actor_state')
+      .values({
+        did: actorDid,
+        lastSeenNotifs: timestampIso,
+      })
+      .onConflict((oc) =>
+        oc.column('did').doUpdateSet({
+          lastSeenNotifs: sql`greatest(${ref('actor_state.lastSeenNotifs')}, ${timestampIso})`,
+        }),
+      )
+      .executeTakeFirst()
+  },
+
+  async getNotificationPreferences(req) {
+    const { dids } = req
+    if (dids.length === 0) {
+      return { preferences: [] }
+    }
+
+    const res = await db.db
+      .selectFrom('private_data')
+      .selectAll()
+      .where('actorDid', 'in', dids)
+      .where(
+        'namespace',
+        '=',
+        Namespaces.AppBskyNotificationDefsPreferences.$type,
+      )
+      .where('key', '=', 'self')
+      .execute()
+
+    const byDid = keyBy(res, 'actorDid')
+    const preferences = dids.map((did) => {
+      const row = byDid.get(did)
+      if (!row) {
+        return {}
+      }
+      const p = lexParse<app.bsky.notification.defs.Preferences>(row.payload)
+      return notificationPreferencesLexToProtobuf(p, row.payload)
+    })
+
+    return { preferences }
+  },
+})
+
+export const notificationPreferencesLexToProtobuf = (
+  p: app.bsky.notification.defs.Preferences,
+  json: string,
+): NotificationPreferences => {
+  const lexFilterablePreferenceToProtobuf = (
+    p: app.bsky.notification.defs.FilterablePreference,
+  ): FilterableNotificationPreference =>
+    new FilterableNotificationPreference({
+      include:
+        p.include === 'follows'
+          ? NotificationInclude.FOLLOWS
+          : NotificationInclude.ALL,
+      list: { enabled: p.list ?? true },
+      push: { enabled: p.push ?? true },
+    })
+
+  const lexPreferenceToProtobuf = (
+    p: app.bsky.notification.defs.Preference,
+  ): NotificationPreference =>
+    new NotificationPreference({
+      list: { enabled: p.list ?? true },
+      push: { enabled: p.push ?? true },
+    })
+
+  return new NotificationPreferences({
+    entry: Buffer.from(json),
+    follow: lexFilterablePreferenceToProtobuf(p.follow),
+    like: lexFilterablePreferenceToProtobuf(p.like),
+    likeViaRepost: lexFilterablePreferenceToProtobuf(p.likeViaRepost),
+    mention: lexFilterablePreferenceToProtobuf(p.mention),
+    quote: lexFilterablePreferenceToProtobuf(p.quote),
+    reply: lexFilterablePreferenceToProtobuf(p.reply),
+    repost: lexFilterablePreferenceToProtobuf(p.repost),
+    repostViaRepost: lexFilterablePreferenceToProtobuf(p.repostViaRepost),
+    starterpackJoined: lexPreferenceToProtobuf(p.starterpackJoined),
+    subscribedPost: lexPreferenceToProtobuf(p.subscribedPost),
+    unverified: lexPreferenceToProtobuf(p.unverified),
+    verified: lexPreferenceToProtobuf(p.verified),
+  })
+}

@@ -1,0 +1,252 @@
+# CI for jetstream.
+#
+# Security posture
+# ----------------
+# This workflow is hardened against the standard GitHub Actions footguns.
+# Every choice below is deliberate; please read the rationale before relaxing
+# any of these settings.
+#
+#   1. Every third-party action is pinned to a full 40-character commit SHA,
+#      not a mutable tag. Tags can be force-pushed (cf. the tj-actions/
+#      changed-files compromise of March 2025); commit SHAs cannot. We
+#      bump these by hand on a periodic cadence — Dependabot is intentionally
+#      not used, since it runs as a privileged actor in the repo, opens PRs
+#      that touch sensitive build configuration, and has its own history of
+#      supply-chain incidents (e.g. the 2023 Dependabot impersonation issue).
+#      Manual review of each upgrade is cheap at this dependency footprint.
+#
+#   2. The workflow-level `permissions:` block grants nothing. Each job adds
+#      only the scopes it needs. The default GITHUB_TOKEN on older repos can
+#      be alarmingly broad — empty-by-default + per-job opt-in is least
+#      privilege.
+#
+#   3. `actions/checkout` runs with `persist-credentials: false` so the token
+#      isn't left in `.git/config` for subsequent steps (or any code those
+#      steps execute) to read. We're not pushing from CI, so we don't need it.
+#
+#   4. `step-security/harden-runner` blocks all egress except an explicit
+#      allowlist. This neuters a compromised dependency's ability to
+#      exfiltrate secrets or source code. If a future change adds a new
+#      legitimate egress target, the audit log will show the block; widen
+#      the allowlist in a reviewed PR.
+#
+#   5. We use `push` only. Only users with write access to this repo can
+#      push refs, so CI never executes code from an untrusted source. We
+#      explicitly do NOT use `pull_request` (runs untrusted PR code, even
+#      with secrets stripped) or `pull_request_target` (runs untrusted PR
+#      code WITH secrets — the canonical "GitHub Actions PR pwn" vector).
+#
+#   6. The Nix flake pins Go and all development tools. CI enters that same
+#      shell for lint/tests so local and CI toolchains cannot drift.
+#
+#   7. The runner image is pinned to a specific Ubuntu version, not
+#      `ubuntu-latest`, so a Microsoft-side image roll can't change build
+#      behavior under us.
+#
+#   8. Each job has a `timeout-minutes` cap so a hung test or wedged dep
+#      fetch can't hold a runner indefinitely.
+#
+#   9. The concurrency group cancels superseded runs on feature branches
+#      (a fast-follow push obsoletes the previous run), but deliberately
+#      does NOT cancel runs on `main`, where every commit's signal is
+#      independently valuable for `git bisect`.
+#
+#  10. We never interpolate untrusted event payload fields (PR titles,
+#      commit messages, branch names, etc.) into `run:` shell strings.
+#      Doing so is the canonical GitHub Actions script-injection vector.
+#
+#  11. All caching is disabled. The GitHub Actions cache is shared mutable
+#      state with default-branch fallback restore semantics, which means a
+#      compromised actor with write access to any branch can plant
+#      artifacts that future runs (including on `main`) will restore and
+#      execute. We pay a few seconds per run for `go mod download` and a
+#      cold compile in exchange for no persistent foothold for an attacker
+#      to land on. If build times grow enough to feel slow, revisit with a
+#      content-addressed scheme that disables `restore-keys` fallback.
+
+name: ci
+
+# Trigger model
+# -------------
+# `push` only. This is the most security-conservative posture available:
+# only users with write access to this repository can push refs, so CI
+# never executes code from an untrusted source. Fork PRs from external
+# contributors will not get a CI signal until a maintainer pushes the
+# commits to a branch in this repo (e.g. via `gh pr checkout` + push).
+# We deliberately do NOT use `pull_request` (which would run untrusted PR
+# code, even with secrets stripped) or `pull_request_target` (which is
+# the canonical pwn vector — runs PR code with secrets in scope).
+on:
+  push:
+
+# Empty top-level permissions => every job starts with a zero-scope token
+# and must opt in explicitly.
+permissions: {}
+
+# Cancel in-progress runs for the same ref *unless* the ref is main.
+# `github.run_id` is unique per run on main, so the group never collides
+# there; on feature branches the group is shared across pushes to the
+# same ref so a fast-follow push cancels the stale run.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref == 'refs/heads/main' && github.run_id || github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+jobs:
+  lint:
+    name: lint
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - name: Harden runner
+        uses: step-security/harden-runner@9ca718d3bf646d6534007c269a635b3e54cadf99 # v2.19.2
+        with:
+          egress-policy: block
+          # Endpoints required by checkout, Nix installation/evaluation,
+          # binary substitutes, and Go module downloads during the build.
+          # Any access outside this list is blocked at the firewall level.
+          allowed-endpoints: >
+            api.github.com:443
+            cache.nixos.org:443
+            codeload.github.com:443
+            github.com:443
+            install.determinate.systems:443
+            releases.nixos.org:443
+            objects.githubusercontent.com:443
+            release-assets.githubusercontent.com:443
+            raw.githubusercontent.com:443
+            proxy.golang.org:443
+            sum.golang.org:443
+            storage.googleapis.com:443
+            dl.google.com:443
+
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          # Don't leave the GITHUB_TOKEN in .git/config where subsequent
+          # steps (and any code they execute) could read it.
+          persist-credentials: false
+
+      - name: Install Nix
+        uses: DeterminateSystems/nix-installer-action@ef8a148080ab6020fd15196c2084a2eea5ff2d25 # v22
+        with:
+          determinate: false
+          diagnostic-endpoint: ""
+          github-token: ""
+
+      - name: Lint
+        run: ./dev.sh --command just lint
+
+      # Fail if the committed generated XRPC code in api/ has drifted from
+      # the lexicons in ./lexicons. Regenerating must be a no-op; if it
+      # isn't, someone edited a lexicon without running `just lexgen`.
+      - name: Verify lexicon codegen is up to date
+        run: |
+          ./dev.sh --command just lexgen
+          git diff --exit-code -- api/
+
+  test:
+    name: test (race)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    steps:
+      - name: Harden runner
+        uses: step-security/harden-runner@9ca718d3bf646d6534007c269a635b3e54cadf99 # v2.19.2
+        with:
+          egress-policy: block
+          allowed-endpoints: >
+            api.github.com:443
+            cache.nixos.org:443
+            codeload.github.com:443
+            github.com:443
+            install.determinate.systems:443
+            releases.nixos.org:443
+            objects.githubusercontent.com:443
+            release-assets.githubusercontent.com:443
+            raw.githubusercontent.com:443
+            proxy.golang.org:443
+            sum.golang.org:443
+            storage.googleapis.com:443
+            dl.google.com:443
+            results-receiver.actions.githubusercontent.com:443
+            *.blob.core.windows.net:443
+
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+
+      - name: Install Nix
+        uses: DeterminateSystems/nix-installer-action@ef8a148080ab6020fd15196c2084a2eea5ff2d25 # v22
+        with:
+          determinate: false
+          diagnostic-endpoint: ""
+          github-token: ""
+
+      - name: Test (race detector)
+        env:
+          RACE_ARTIFACT_DIR: ${{ github.workspace }}/race-artifacts
+        run: ./dev.sh --command just test-race-ci
+
+      - name: Upload race diagnostics
+        # The race detector report is the actionable evidence for #308. Capture
+        # the raw test2json stream and console log only on failure so normal CI
+        # stays quiet, but the next intermittent race keeps its access stacks.
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: race-diagnostics
+          path: ${{ github.workspace }}/race-artifacts
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Failure summary
+        if: failure()
+        run: |
+          {
+            echo "## Race test failed"
+            echo
+            echo 'Download the `race-diagnostics` artifact for `gotestsum.jsonl` and `test-output.log`.'
+            echo 'If this was a data race, search those files for `WARNING: DATA RACE`; the report includes the racing access stacks.'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  docker-build:
+    name: docker build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    # This job intentionally does not use harden-runner's egress blocklist.
+    # It has no secrets and no package write token; it only proves that the
+    # Dockerfile still builds and stamps version metadata. Docker registries
+    # redirect layer downloads through changing CDN/storage hosts, so a strict
+    # allowlist here is noisy without materially improving this job's risk.
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+
+      - name: Install Nix
+        uses: DeterminateSystems/nix-installer-action@ef8a148080ab6020fd15196c2084a2eea5ff2d25 # v22
+        with:
+          determinate: false
+          diagnostic-endpoint: ""
+          github-token: ""
+
+      - name: Build Docker image
+        run: ./dev.sh --command just docker-build
+
+      - name: Verify Docker build stamp
+        run: |
+          out="$(docker run --rm jetstream:local version)"
+          echo "${out}"
+          case "${out}" in
+            *" version dev "*|*"commit unknown"*|*"built unknown"*)
+              echo "Docker build did not stamp version metadata" >&2
+              exit 1
+              ;;
+          esac

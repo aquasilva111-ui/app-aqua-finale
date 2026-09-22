@@ -1,0 +1,42 @@
+{
+  "name": "@atproto-labs/xrpc-utils",
+  "version": "0.1.22",
+  "license": "MIT",
+  "description": "XRPC server utilities for Node.JS",
+  "keywords": [
+    "atproto",
+    "node",
+    "xrpc",
+    "server",
+    "utilities",
+    "content",
+    "negotiation"
+  ],
+  "homepage": "https://atproto.com",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/bluesky-social/atproto",
+    "directory": "packages/internal/xrpc-utils"
+  },
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./accept": {
+      "types": "./dist/accept.d.ts",
+      "default": "./dist/accept.js"
+    }
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "dependencies": {
+    "@atproto/xrpc": "workspace:^",
+    "@atproto/xrpc-server": "workspace:^"
+  },
+  "scripts": {
+    "build": "tsc --build tsconfig.build.json"
+  }
+}

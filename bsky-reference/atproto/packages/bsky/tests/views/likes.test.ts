@@ -1,0 +1,240 @@
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
+import { type AppBskyFeedGetLikes, type AtpAgent, ids } from '@atproto/api'
+import { type SeedClient, TestNetwork, basicSeed } from '@atproto/dev-env'
+import type { DidString } from '@atproto/syntax'
+import {
+  constantDate,
+  forSnapshot,
+  paginateAll,
+  stripViewer,
+} from '../_util.js'
+
+describe('pds like views', () => {
+  let network: TestNetwork
+  let agent: AtpAgent
+  let sc: SeedClient
+
+  // account dids, for convenience
+  let alice: DidString
+  let bob: DidString
+  let carol: DidString
+  let frankie: DidString
+
+  beforeAll(async () => {
+    network = await TestNetwork.create({
+      dbPostgresSchema: 'bsky_views_likes',
+    })
+    agent = network.bsky.getAgent()
+    sc = network.getSeedClient()
+    await basicSeed(sc)
+    await sc.createAccount('eve', {
+      email: 'eve@test.com',
+      handle: 'eve.test',
+      password: 'eve-pass',
+    })
+    await sc.like(sc.dids.eve, sc.posts[sc.dids.alice][1].ref)
+    await sc.like(sc.dids.carol, sc.replies[sc.dids.bob][0].ref)
+    await sc.createAccount('frankie', {
+      handle: 'frankie.test',
+      email: 'frankie@frankie.com',
+      password: 'password',
+    })
+
+    alice = sc.dids.alice
+    bob = sc.dids.bob
+    carol = sc.dids.carol
+    frankie = sc.dids.frankie
+  })
+
+  beforeEach(async () => network.processAll())
+  afterAll(async () => network?.close())
+
+  const getCursors = (items: { createdAt?: string }[]) =>
+    items.map((item) => item.createdAt ?? constantDate)
+
+  const getSortedCursors = (items: { createdAt?: string }[]) =>
+    getCursors(items).sort((a, b) => tstamp(b) - tstamp(a))
+
+  const tstamp = (x: string) => new Date(x).getTime()
+
+  it('fetches post likes', async () => {
+    const alicePost = await agent.api.app.bsky.feed.getLikes(
+      { uri: sc.posts[alice][1].ref.uriStr },
+      { headers: await network.serviceHeaders(alice, ids.AppBskyFeedGetLikes) },
+    )
+
+    expect(forSnapshot(alicePost.data)).toMatchSnapshot()
+    expect(getCursors(alicePost.data.likes)).toEqual(
+      getSortedCursors(alicePost.data.likes),
+    )
+  })
+
+  it('fetches reply likes', async () => {
+    const bobReply = await agent.api.app.bsky.feed.getLikes(
+      { uri: sc.replies[bob][0].ref.uriStr },
+      { headers: await network.serviceHeaders(alice, ids.AppBskyFeedGetLikes) },
+    )
+
+    expect(forSnapshot(bobReply.data)).toMatchSnapshot()
+    expect(getCursors(bobReply.data.likes)).toEqual(
+      getSortedCursors(bobReply.data.likes),
+    )
+  })
+
+  it('paginates', async () => {
+    const results = (results: AppBskyFeedGetLikes.OutputSchema[]) =>
+      results.flatMap((res) => res.likes)
+    const paginator = async (cursor?: string) => {
+      const res = await agent.api.app.bsky.feed.getLikes(
+        {
+          uri: sc.posts[alice][1].ref.uriStr,
+          cursor,
+          limit: 2,
+        },
+        {
+          headers: await network.serviceHeaders(alice, ids.AppBskyFeedGetLikes),
+        },
+      )
+      return res.data
+    }
+
+    const paginatedAll = await paginateAll(paginator)
+    paginatedAll.forEach((res) =>
+      expect(res.likes.length).toBeLessThanOrEqual(2),
+    )
+    expect(paginatedAll[0].cursor).toBeDefined()
+    expect(paginatedAll.at(-1)?.cursor).toBeUndefined()
+
+    const full = await agent.api.app.bsky.feed.getLikes(
+      { uri: sc.posts[alice][1].ref.uriStr },
+      { headers: await network.serviceHeaders(alice, ids.AppBskyFeedGetLikes) },
+    )
+
+    expect(full.data.likes.length).toEqual(4)
+    expect(results(paginatedAll)).toEqual(results([full.data]))
+
+    const exact = await network.bsky.ctx.dataplane.getLikesBySubjectSorted({
+      subject: { uri: sc.posts[alice][1].ref.uriStr },
+      limit: 4,
+    })
+    const nonterminal =
+      await network.bsky.ctx.dataplane.getLikesBySubjectSorted({
+        subject: { uri: sc.posts[alice][1].ref.uriStr },
+        limit: 2,
+      })
+    expect(exact.uris).toHaveLength(4)
+    expect(exact.cursor).toBe('')
+    expect(nonterminal.uris).toHaveLength(2)
+    expect(nonterminal.cursor).not.toBe('')
+  })
+
+  it('fetches post likes unauthed', async () => {
+    const { data: authed } = await agent.api.app.bsky.feed.getLikes(
+      { uri: sc.posts[alice][1].ref.uriStr },
+      { headers: await network.serviceHeaders(alice, ids.AppBskyFeedGetLikes) },
+    )
+    const { data: unauthed } = await agent.api.app.bsky.feed.getLikes({
+      uri: sc.posts[alice][1].ref.uriStr,
+    })
+    expect(unauthed.likes.length).toBeGreaterThan(0)
+    expect(unauthed.likes).toEqual(
+      authed.likes.map((like) => {
+        return {
+          ...like,
+          actor: stripViewer(like.actor),
+        }
+      }),
+    )
+  })
+
+  it(`author viewer doesn't see likes by user the author blocked`, async () => {
+    await sc.like(frankie, sc.posts[alice][1].ref)
+    await network.processAll()
+
+    const beforeBlock = await agent.app.bsky.feed.getLikes(
+      { uri: sc.posts[alice][1].ref.uriStr },
+      { headers: await network.serviceHeaders(alice, ids.AppBskyFeedGetLikes) },
+    )
+
+    expect(beforeBlock.data.likes.map((like) => like.actor.did)).toStrictEqual([
+      sc.dids.frankie,
+      sc.dids.eve,
+      sc.dids.dan,
+      sc.dids.carol,
+      sc.dids.bob,
+    ])
+
+    await sc.block(alice, frankie)
+    await network.processAll()
+
+    const afterBlock = await agent.app.bsky.feed.getLikes(
+      { uri: sc.posts[alice][1].ref.uriStr },
+      { headers: await network.serviceHeaders(alice, ids.AppBskyFeedGetLikes) },
+    )
+
+    expect(afterBlock.data.likes.map((like) => like.actor.did)).toStrictEqual([
+      sc.dids.eve,
+      sc.dids.dan,
+      sc.dids.carol,
+      sc.dids.bob,
+    ])
+  })
+
+  it(`non-author viewer doesn't see likes by user the author blocked and by user the viewer blocked `, async () => {
+    await sc.unblock(alice, frankie)
+    await network.processAll()
+
+    const beforeBlock = await agent.app.bsky.feed.getLikes(
+      { uri: sc.posts[alice][1].ref.uriStr },
+      { headers: await network.serviceHeaders(bob, ids.AppBskyFeedGetLikes) },
+    )
+
+    expect(beforeBlock.data.likes.map((like) => like.actor.did)).toStrictEqual([
+      sc.dids.frankie,
+      sc.dids.eve,
+      sc.dids.dan,
+      sc.dids.carol,
+      sc.dids.bob,
+    ])
+
+    await sc.block(alice, frankie)
+    await sc.block(bob, carol)
+    await network.processAll()
+
+    const afterBlock = await agent.app.bsky.feed.getLikes(
+      { uri: sc.posts[alice][1].ref.uriStr },
+      { headers: await network.serviceHeaders(bob, ids.AppBskyFeedGetLikes) },
+    )
+
+    expect(afterBlock.data.likes.map((like) => like.actor.did)).toStrictEqual([
+      sc.dids.eve,
+      sc.dids.dan,
+      sc.dids.bob,
+    ])
+
+    // Filtering carol out leaves this page short of the requested 3, but it
+    // already holds half of them, so it is served with a cursor for the rest.
+    const short = await agent.app.bsky.feed.getLikes(
+      { uri: sc.posts[alice][1].ref.uriStr, limit: 3 },
+      { headers: await network.serviceHeaders(bob, ids.AppBskyFeedGetLikes) },
+    )
+    expect(short.data.likes.map((like) => like.actor.did)).toStrictEqual([
+      sc.dids.eve,
+      sc.dids.dan,
+    ])
+    expect(short.data.cursor).toBeDefined()
+
+    const rest = await agent.app.bsky.feed.getLikes(
+      {
+        uri: sc.posts[alice][1].ref.uriStr,
+        limit: 3,
+        cursor: short.data.cursor,
+      },
+      { headers: await network.serviceHeaders(bob, ids.AppBskyFeedGetLikes) },
+    )
+    expect(rest.data.likes.map((like) => like.actor.did)).toStrictEqual([
+      sc.dids.bob,
+    ])
+    expect(rest.data.cursor).toBeUndefined()
+  })
+})

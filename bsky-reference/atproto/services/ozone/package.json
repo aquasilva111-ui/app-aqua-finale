@@ -1,0 +1,10 @@
+{
+  "name": "ozone-service",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@atproto/aws": "workspace:^",
+    "@atproto/ozone": "workspace:^",
+    "prom-client": "^15.1.3"
+  }
+}

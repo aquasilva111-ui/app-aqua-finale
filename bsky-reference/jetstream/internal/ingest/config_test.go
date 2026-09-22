@@ -1,0 +1,126 @@
+package ingest
+
+import (
+	"context"
+	"errors"
+	"io"
+	"log/slog"
+	"testing"
+
+	"github.com/bluesky-social/jetstream/internal/store"
+	"github.com/cockroachdb/pebble"
+	"github.com/stretchr/testify/require"
+)
+
+// TestConfigValidate_RequiresFields pins the validation contract for
+// cmd/jetstream: Open errors out before any I/O if Config is missing
+// required fields.
+func TestConfigValidate_RequiresFields(t *testing.T) {
+	t.Parallel()
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	tests := []struct {
+		name string
+		cfg  Config
+		want string
+	}{
+		{"missing SegmentsDir", Config{Store: &store.Store{}, Logger: logger}, "SegmentsDir"},
+		{"missing Store", Config{SegmentsDir: "/tmp/x", Logger: logger}, "Store"},
+		{"missing Logger", Config{SegmentsDir: "/tmp/x", Store: &store.Store{}}, "Logger"},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			err := tc.cfg.validate()
+			require.ErrorIs(t, err, ErrInvalidConfig)
+			require.ErrorContains(t, err, tc.want)
+		})
+	}
+}
+
+// TestConfigValidate_AppliesDefaults pins the documented defaults for
+// MaxSegmentBytes and MaxEventsPerBlock.
+func TestConfigValidate_AppliesDefaults(t *testing.T) {
+	t.Parallel()
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	cfg := Config{SegmentsDir: "/tmp/x", Store: &store.Store{}, Logger: logger}
+	require.NoError(t, cfg.validate())
+
+	cfg.applyDefaults()
+	require.Equal(t, int64(256<<20), cfg.MaxSegmentBytes)
+	require.Equal(t, defaultMaxEventsPerBlock, cfg.MaxEventsPerBlock)
+}
+
+// TestConfigValidate_RejectsNegativeBytes guards against a footgun:
+// MaxSegmentBytes < 0 is meaningless and would loop infinitely.
+func TestConfigValidate_RejectsNegativeBytes(t *testing.T) {
+	t.Parallel()
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	cfg := Config{
+		SegmentsDir:     "/tmp/x",
+		Store:           &store.Store{},
+		Logger:          logger,
+		MaxSegmentBytes: -1,
+	}
+	err := cfg.validate()
+	require.True(t, errors.Is(err, ErrInvalidConfig), "want ErrInvalidConfig, got %v", err)
+}
+
+func TestConfigValidate_RejectsNegativeAsyncFlushWorkers(t *testing.T) {
+	t.Parallel()
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	cfg := Config{
+		SegmentsDir:       "/tmp/x",
+		Store:             &store.Store{},
+		Logger:            logger,
+		AsyncFlushWorkers: -1,
+	}
+
+	err := cfg.validate()
+	require.ErrorIs(t, err, ErrInvalidConfig)
+	require.ErrorContains(t, err, "AsyncFlushWorkers")
+}
+
+func TestConfigValidate_AllowsAsyncFlushWithDurableBatchHook(t *testing.T) {
+	t.Parallel()
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	cfg := Config{
+		SegmentsDir:       "/tmp/x",
+		Store:             &store.Store{},
+		Logger:            logger,
+		AsyncFlushWorkers: 1,
+		OnDurableBatch: func(context.Context, *pebble.Batch, uint64, bool, any) (func(), func(error), error) {
+			return nil, nil, nil
+		},
+	}
+
+	err := cfg.validate()
+	require.NoError(t, err)
+}
+
+func TestConfigValidate_SeqLeaseConstraints(t *testing.T) {
+	t.Parallel()
+	base := Config{
+		SegmentsDir: "/tmp/x",
+		Store:       &store.Store{},
+		Logger:      slog.New(slog.NewTextHandler(io.Discard, nil)),
+	}
+
+	async := base
+	async.ReserveClientVisibleSeqs = true
+	async.AsyncFlushWorkers = 1
+	err := async.validate()
+	require.ErrorIs(t, err, ErrInvalidConfig)
+	require.ErrorContains(t, err, "AsyncFlushWorkers=0")
+
+	wrongNamespace := base
+	wrongNamespace.ReserveClientVisibleSeqs = true
+	wrongNamespace.SeqKey = "bootstrap/seq/next"
+	err = wrongNamespace.validate()
+	require.ErrorIs(t, err, ErrInvalidConfig)
+	require.ErrorContains(t, err, "canonical")
+
+	untrusted := base
+	untrusted.UnreservedSeqsUnobservable = true
+	err = untrusted.validate()
+	require.ErrorIs(t, err, ErrInvalidConfig)
+	require.ErrorContains(t, err, "requires ReserveClientVisibleSeqs")
+}

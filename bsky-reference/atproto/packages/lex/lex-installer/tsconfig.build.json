@@ -1,0 +1,18 @@
+{
+  "extends": ["../../../tsconfig/node.tsconfig.json"],
+  "include": ["./src"],
+  "exclude": ["**/*.test.ts"],
+  "references": [
+    { "path": "../../syntax/tsconfig.build.json" },
+    { "path": "../lex-builder/tsconfig.build.json" },
+    { "path": "../lex-cbor/tsconfig.build.json" },
+    { "path": "../lex-data/tsconfig.build.json" },
+    { "path": "../lex-document/tsconfig.build.json" },
+    { "path": "../lex-resolver/tsconfig.build.json" },
+    { "path": "../lex-schema/tsconfig.build.json" },
+  ],
+  "compilerOptions": {
+    "rootDir": "./src",
+    "outDir": "./dist",
+  },
+}

@@ -1,0 +1,413 @@
+import type * as http from 'node:http'
+import type { AddressInfo } from 'node:net'
+import express from 'express'
+import type { LexiconDoc } from '@atproto/lexicon'
+import { XrpcClient } from '@atproto/xrpc'
+import * as xrpcServer from '../src/index.js'
+import {
+  buildAddLexicons,
+  buildMethodLexicons,
+  closeServer,
+  createServer,
+} from './_util.js'
+
+const LEXICONS: LexiconDoc[] = [
+  {
+    lexicon: 1,
+    id: 'io.example.paramTest',
+    defs: {
+      main: {
+        type: 'query',
+        parameters: {
+          type: 'params',
+          required: ['str', 'int', 'bool', 'arr'],
+          properties: {
+            str: { type: 'string', minLength: 2, maxLength: 10 },
+            int: { type: 'integer', minimum: 2, maximum: 10 },
+            bool: { type: 'boolean' },
+            arr: { type: 'array', items: { type: 'integer' }, maxLength: 2 },
+            def: { type: 'integer', default: 0 },
+          },
+        },
+        output: {
+          encoding: 'application/json',
+        },
+      },
+    },
+  },
+]
+
+describe('Parameters', () => {
+  let s: http.Server
+  const server = xrpcServer.createServer(LEXICONS)
+  server.method('io.example.paramTest', (ctx) => ({
+    encoding: 'json',
+    body: ctx.params,
+  }))
+
+  let client: XrpcClient
+  beforeAll(async () => {
+    s = await createServer(server)
+    const { port } = s.address() as AddressInfo
+    client = new XrpcClient(
+      `http://localhost:${port}`,
+      structuredClone(LEXICONS),
+    )
+  })
+  afterAll(async () => {
+    await closeServer(s)
+  })
+
+  it('validates query params', async () => {
+    const res1 = await client.call('io.example.paramTest', {
+      str: 'valid',
+      int: 5,
+      bool: true,
+      arr: [1, 2],
+      def: 5,
+    })
+    expect(res1.success).toBeTruthy()
+    expect(res1.data.str).toBe('valid')
+    expect(res1.data.int).toBe(5)
+    expect(res1.data.bool).toBe(true)
+    expect(res1.data.arr).toEqual([1, 2])
+    expect(res1.data.def).toEqual(5)
+
+    const res2 = await client.call('io.example.paramTest', {
+      str: 10,
+      int: '5',
+      bool: 'foo',
+      arr: '3',
+    })
+    expect(res2.success).toBeTruthy()
+    expect(res2.data.str).toBe('10')
+    expect(res2.data.int).toBe(5)
+    expect(res2.data.bool).toBe(true)
+    expect(res2.data.arr).toEqual([3])
+    expect(res2.data.def).toEqual(0)
+
+    // @TODO test sending blatantly bad types
+    await expect(
+      client.call('io.example.paramTest', {
+        str: 'n',
+        int: 5,
+        bool: true,
+        arr: [1],
+      }),
+    ).rejects.toThrow('str must not be shorter than 2 characters')
+    await expect(
+      client.call('io.example.paramTest', {
+        str: 'loooooooooooooong',
+        int: 5,
+        bool: true,
+        arr: [1],
+      }),
+    ).rejects.toThrow('str must not be longer than 10 characters')
+    await expect(
+      client.call('io.example.paramTest', {
+        int: 5,
+        bool: true,
+        arr: [1],
+      }),
+    ).rejects.toThrow(`Params must have the property "str"`)
+
+    await expect(
+      client.call('io.example.paramTest', {
+        str: 'valid',
+        int: -1,
+        bool: true,
+        arr: [1],
+      }),
+    ).rejects.toThrow('int can not be less than 2')
+    await expect(
+      client.call('io.example.paramTest', {
+        str: 'valid',
+        int: 11,
+        bool: true,
+        arr: [1],
+      }),
+    ).rejects.toThrow('int can not be greater than 10')
+    await expect(
+      client.call('io.example.paramTest', {
+        str: 'valid',
+        bool: true,
+        arr: [1],
+      }),
+    ).rejects.toThrow(`Params must have the property "int"`)
+
+    await expect(
+      client.call('io.example.paramTest', {
+        str: 'valid',
+        int: 5,
+        arr: [1],
+      }),
+    ).rejects.toThrow(`Params must have the property "bool"`)
+
+    await expect(
+      client.call('io.example.paramTest', {
+        str: 'valid',
+        int: 5,
+        bool: true,
+        arr: [],
+      }),
+    ).rejects.toThrow('Error: Params must have the property "arr"')
+    await expect(
+      client.call('io.example.paramTest', {
+        str: 'valid',
+        int: 5,
+        bool: true,
+        arr: [1, 2, 3],
+      }),
+    ).rejects.toThrow('Error: arr must not have more than 2 elements')
+  })
+})
+
+describe('Express query parsing compatibility', () => {
+  let s: http.Server
+  let url: string
+
+  const lexicons: LexiconDoc[] = [
+    {
+      lexicon: 1,
+      id: 'io.example.repeatedArrayQueryTest',
+      defs: {
+        main: {
+          type: 'query',
+          parameters: {
+            type: 'params',
+            required: ['dids'],
+            properties: {
+              dids: {
+                type: 'array',
+                items: { type: 'string', format: 'did' },
+                maxLength: 100,
+              },
+            },
+          },
+          output: {
+            encoding: 'application/json',
+          },
+        },
+      },
+    },
+  ]
+
+  beforeAll(async () => {
+    const server = xrpcServer.createServer(lexicons)
+    server.method('io.example.repeatedArrayQueryTest', (ctx) => ({
+      encoding: 'application/json',
+      body: ctx.params,
+    }))
+
+    const app = express()
+    app.set('query parser', (queryString: string) => {
+      const parsed: Record<string, unknown> = {}
+      const searchParams = new URLSearchParams(queryString)
+      for (const key of new Set(searchParams.keys())) {
+        const values = searchParams.getAll(key)
+        parsed[key] =
+          values.length > 20
+            ? Object.fromEntries(values.map((value, index) => [index, value]))
+            : values.length === 1
+              ? values[0]
+              : values
+      }
+      return parsed
+    })
+    app.use(server.router)
+
+    s = app.listen(0)
+    await new Promise((resolve) => s.once('listening', resolve))
+    const { port } = s.address() as AddressInfo
+    url = `http://localhost:${port}`
+  })
+
+  afterAll(async () => {
+    await closeServer(s)
+  })
+
+  it('handles repeated array params above Express query parser array limits', async () => {
+    const did = 'did:plc:t76alsfrlr2zewmi2nsy6rls'
+    const params = new URLSearchParams()
+    for (let index = 0; index < 21; index++) {
+      params.append('dids', did)
+    }
+
+    const res = await fetch(
+      `${url}/xrpc/io.example.repeatedArrayQueryTest?${params}`,
+    )
+
+    expect(res.status).toBe(200)
+    const body = await res.json()
+    expect(body.dids).toEqual(Array.from({ length: 21 }, () => did))
+  })
+})
+
+const LOOSE_PARAMS_LEXICONS = [
+  {
+    lexicon: 1,
+    id: 'io.example.looseParamsTest',
+    defs: {
+      main: {
+        type: 'query',
+        parameters: {
+          type: 'params',
+          required: ['str'],
+          properties: {
+            str: { type: 'string' },
+            arr: { type: 'array', items: { type: 'string' } },
+          },
+        },
+        output: {
+          encoding: 'application/json',
+        },
+      },
+    },
+  },
+] as const satisfies LexiconDoc[]
+
+for (const buildServer of [buildMethodLexicons, buildAddLexicons]) {
+  describe(buildServer, () => {
+    let s: http.Server
+    let url: string
+
+    beforeAll(async () => {
+      const server = await buildServer(LOOSE_PARAMS_LEXICONS, {
+        'io.example.looseParamsTest': {
+          opts:
+            buildServer === buildAddLexicons
+              ? { paramsParseLoose: true }
+              : undefined,
+          handler: (ctx: xrpcServer.HandlerContext) => ({
+            encoding: 'application/json',
+            body: ctx.params,
+          }),
+        },
+      })
+      s = await createServer(server)
+      const { port } = s.address() as AddressInfo
+      url = `http://localhost:${port}`
+    })
+
+    afterAll(async () => {
+      await closeServer(s)
+    })
+
+    it('converts bracket[] array syntax to standard params', async () => {
+      const res = await fetch(
+        `${url}/xrpc/io.example.looseParamsTest?str=hello&arr[]=one&arr[]=two`,
+      )
+      expect(res.status).toBe(200)
+      const body = await res.json()
+      expect(body.str).toBe('hello')
+      expect(body.arr).toEqual(['one', 'two'])
+    })
+
+    it('converts bracket[n] array syntax to standard params', async () => {
+      const res = await fetch(
+        `${url}/xrpc/io.example.looseParamsTest?str=hello&arr[0]=one&arr[1]=two`,
+      )
+      expect(res.status).toBe(200)
+      const body = await res.json()
+      expect(body.str).toBe('hello')
+      expect(body.arr).toEqual(['one', 'two'])
+    })
+
+    it('ignores empty indices when using bracket[n] syntax', async () => {
+      const res = await fetch(
+        `${url}/xrpc/io.example.looseParamsTest?str=hello&arr[4]=one&arr[9]=two`,
+      )
+      expect(res.status).toBe(200)
+      const body = await res.json()
+      expect(body.str).toBe('hello')
+      expect(body.arr).toEqual(['one', 'two'])
+    })
+
+    it('still handles standard array syntax', async () => {
+      const res = await fetch(
+        `${url}/xrpc/io.example.looseParamsTest?str=hello&arr=one&arr=two`,
+      )
+      expect(res.status).toBe(200)
+      const body = await res.json()
+      expect(body.str).toBe('hello')
+      expect(body.arr).toEqual(['one', 'two'])
+    })
+
+    it('handles single bracket value', async () => {
+      const res = await fetch(
+        `${url}/xrpc/io.example.looseParamsTest?str=hello&arr[]=only`,
+      )
+      expect(res.status).toBe(200)
+      const body = await res.json()
+      expect(body.str).toBe('hello')
+      expect(body.arr).toEqual(['only'])
+    })
+
+    it('handles single indexed bracket value', async () => {
+      const res = await fetch(
+        `${url}/xrpc/io.example.looseParamsTest?str=hello&arr[0]=only`,
+      )
+      expect(res.status).toBe(200)
+      const body = await res.json()
+      expect(body.str).toBe('hello')
+      expect(body.arr).toEqual(['only'])
+    })
+  })
+}
+
+describe('paramsParseLoose option', () => {
+  it('throws when used with method()', () => {
+    const server = xrpcServer.createServer(
+      structuredClone(LOOSE_PARAMS_LEXICONS),
+    )
+    expect(() => {
+      server.method('io.example.looseParamsTest', {
+        opts: { paramsParseLoose: true },
+        handler: () => ({
+          encoding: 'application/json',
+          body: {},
+        }),
+      })
+    }).toThrow('paramsParseLoose is not supported with method()')
+    expect(() => {
+      server.method('io.example.looseParamsTest', {
+        opts: { paramsParseLoose: false },
+        handler: () => ({
+          encoding: 'application/json',
+          body: {},
+        }),
+      })
+    }).toThrow('paramsParseLoose is not supported with method()')
+  })
+})
+
+describe(buildAddLexicons, () => {
+  it('does not use loose parsing by default', async () => {
+    const server = await buildAddLexicons(LOOSE_PARAMS_LEXICONS, {
+      'io.example.looseParamsTest': (ctx: xrpcServer.HandlerContext) => ({
+        encoding: 'application/json',
+        body: ctx.params,
+      }),
+    })
+
+    await using httpServer = await createServer(server)
+    const { port } = httpServer.address() as AddressInfo
+    const url = `http://localhost:${port}`
+
+    // standard array syntax works
+    const res = await fetch(
+      `${url}/xrpc/io.example.looseParamsTest?str=hello&arr=one&arr=two`,
+    )
+    expect(res.status).toBe(200)
+    const body = await res.json()
+    expect(body.arr).toEqual(['one', 'two'])
+
+    // bracket syntax is not converted without paramsParseLoose
+    const bracketRes = await fetch(
+      `${url}/xrpc/io.example.looseParamsTest?str=hello&arr[]=one&arr[]=two`,
+    )
+    expect(bracketRes.status).toBe(200)
+    const bracketBody = await bracketRes.json()
+    expect(bracketBody.arr).toBeUndefined()
+  })
+})

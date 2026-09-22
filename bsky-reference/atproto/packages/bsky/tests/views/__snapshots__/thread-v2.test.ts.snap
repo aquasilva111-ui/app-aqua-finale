@@ -1,0 +1,1370 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`appview thread views v2 > simple thread > returns thread anchored on 1 1`] = `
+{
+  "hasOtherReplies": false,
+  "thread": [
+    {
+      "depth": -1,
+      "uri": "record(0)",
+      "value": {
+        "$type": "app.bsky.unspecced.defs#threadItemPost",
+        "hiddenByThreadgate": false,
+        "moreParents": false,
+        "moreReplies": 0,
+        "mutedByViewer": false,
+        "opThread": true,
+        "opThreadPostCount": 3,
+        "opThreadPostIndex": 1,
+        "post": {
+          "author": {
+            "associated": {
+              "activitySubscription": {
+                "allowSubscriptions": "followers",
+              },
+            },
+            "did": "user(0)",
+            "handle": "simple-op.test",
+            "labels": [],
+            "viewer": {
+              "blockedBy": false,
+              "muted": false,
+              "mutedOnlyQuoteposts": false,
+              "mutedOnlyReposts": false,
+            },
+          },
+          "bookmarkCount": 0,
+          "cid": "cids(0)",
+          "indexedAt": "1970-01-01T00:00:00.000Z",
+          "labels": [],
+          "likeCount": 0,
+          "quoteCount": 0,
+          "record": {
+            "$type": "app.bsky.feed.post",
+            "createdAt": "1970-01-01T00:00:00.000Z",
+            "text": "root",
+          },
+          "replyCount": 4,
+          "repostCount": 0,
+          "uri": "record(0)",
+          "viewer": {
+            "bookmarked": false,
+            "embeddingDisabled": false,
+            "threadMuted": false,
+          },
+        },
+      },
+    },
+    {
+      "depth": 0,
+      "uri": "record(1)",
+      "value": {
+        "$type": "app.bsky.unspecced.defs#threadItemPost",
+        "hiddenByThreadgate": false,
+        "moreParents": false,
+        "moreReplies": 0,
+        "mutedByViewer": false,
+        "opThread": false,
+        "post": {
+          "author": {
+            "associated": {
+              "activitySubscription": {
+                "allowSubscriptions": "followers",
+              },
+            },
+            "did": "user(1)",
+            "handle": "simple-alice.test",
+            "labels": [],
+            "viewer": {
+              "blockedBy": false,
+              "muted": false,
+              "mutedOnlyQuoteposts": false,
+              "mutedOnlyReposts": false,
+            },
+          },
+          "bookmarkCount": 0,
+          "cid": "cids(1)",
+          "indexedAt": "1970-01-01T00:00:00.000Z",
+          "labels": [],
+          "likeCount": 0,
+          "quoteCount": 0,
+          "record": {
+            "$type": "app.bsky.feed.post",
+            "createdAt": "1970-01-01T00:00:00.000Z",
+            "reply": {
+              "parent": {
+                "cid": "cids(0)",
+                "uri": "record(0)",
+              },
+              "root": {
+                "cid": "cids(0)",
+                "uri": "record(0)",
+              },
+            },
+            "text": "1",
+          },
+          "replyCount": 0,
+          "repostCount": 0,
+          "uri": "record(1)",
+          "viewer": {
+            "bookmarked": false,
+            "embeddingDisabled": false,
+            "threadMuted": false,
+          },
+        },
+      },
+    },
+  ],
+}
+`;
+
+exports[`appview thread views v2 > simple thread > returns thread anchored on 2 1`] = `
+{
+  "hasOtherReplies": false,
+  "thread": [
+    {
+      "depth": -1,
+      "uri": "record(0)",
+      "value": {
+        "$type": "app.bsky.unspecced.defs#threadItemPost",
+        "hiddenByThreadgate": false,
+        "moreParents": false,
+        "moreReplies": 0,
+        "mutedByViewer": false,
+        "opThread": true,
+        "opThreadPostCount": 3,
+        "opThreadPostIndex": 1,
+        "post": {
+          "author": {
+            "associated": {
+              "activitySubscription": {
+                "allowSubscriptions": "followers",
+              },
+            },
+            "did": "user(0)",
+            "handle": "simple-op.test",
+            "labels": [],
+            "viewer": {
+              "blockedBy": false,
+              "muted": false,
+              "mutedOnlyQuoteposts": false,
+              "mutedOnlyReposts": false,
+            },
+          },
+          "bookmarkCount": 0,
+          "cid": "cids(0)",
+          "indexedAt": "1970-01-01T00:00:00.000Z",
+          "labels": [],
+          "likeCount": 0,
+          "quoteCount": 0,
+          "record": {
+            "$type": "app.bsky.feed.post",
+            "createdAt": "1970-01-01T00:00:00.000Z",
+            "text": "root",
+          },
+          "replyCount": 4,
+          "repostCount": 0,
+          "uri": "record(0)",
+          "viewer": {
+            "bookmarked": false,
+            "embeddingDisabled": false,
+            "threadMuted": false,
+          },
+        },
+      },
+    },
+    {
+      "depth": 0,
+      "uri": "record(1)",
+      "value": {
+        "$type": "app.bsky.unspecced.defs#threadItemPost",
+        "hiddenByThreadgate": false,
+        "moreParents": false,
+        "moreReplies": 0,
+        "mutedByViewer": false,
+        "opThread": false,
+        "post": {
+          "author": {
+            "associated": {
+              "activitySubscription": {
+                "allowSubscriptions": "followers",
+              },
+            },
+            "did": "user(1)",
+            "handle": "simple-bob.test",
+            "labels": [],
+            "viewer": {
+              "blockedBy": false,
+              "muted": false,
+              "mutedOnlyQuoteposts": false,
+              "mutedOnlyReposts": false,
+            },
+          },
+          "bookmarkCount": 0,
+          "cid": "cids(1)",
+          "indexedAt": "1970-01-01T00:00:00.000Z",
+          "labels": [],
+          "likeCount": 0,
+          "quoteCount": 0,
+          "record": {
+            "$type": "app.bsky.feed.post",
+            "createdAt": "1970-01-01T00:00:00.000Z",
+            "reply": {
+              "parent": {
+                "cid": "cids(0)",
+                "uri": "record(0)",
+              },
+              "root": {
+                "cid": "cids(0)",
+                "uri": "record(0)",
+              },
+            },
+            "text": "2",
+          },
+          "replyCount": 1,
+          "repostCount": 0,
+          "uri": "record(1)",
+          "viewer": {
+            "bookmarked": false,
+            "embeddingDisabled": false,
+            "threadMuted": false,
+          },
+        },
+      },
+    },
+    {
+      "depth": 1,
+      "uri": "record(2)",
+      "value": {
+        "$type": "app.bsky.unspecced.defs#threadItemPost",
+        "hiddenByThreadgate": false,
+        "moreParents": false,
+        "moreReplies": 0,
+        "mutedByViewer": false,
+        "opThread": false,
+        "post": {
+          "author": {
+            "associated": {
+              "activitySubscription": {
+                "allowSubscriptions": "followers",
+              },
+            },
+            "did": "user(2)",
+            "handle": "simple-alice.test",
+            "labels": [],
+            "viewer": {
+              "blockedBy": false,
+              "muted": false,
+              "mutedOnlyQuoteposts": false,
+              "mutedOnlyReposts": false,
+            },
+          },
+          "bookmarkCount": 0,
+          "cid": "cids(2)",
+          "indexedAt": "1970-01-01T00:00:00.000Z",
+          "labels": [],
+          "likeCount": 0,
+          "quoteCount": 0,
+          "record": {
+            "$type": "app.bsky.feed.post",
+            "createdAt": "1970-01-01T00:00:00.000Z",
+            "reply": {
+              "parent": {
+                "cid": "cids(1)",
+                "uri": "record(1)",
+              },
+              "root": {
+                "cid": "cids(0)",
+                "uri": "record(0)",
+              },
+            },
+            "text": "2.0",
+          },
+          "replyCount": 0,
+          "repostCount": 0,
+          "uri": "record(2)",
+          "viewer": {
+            "bookmarked": false,
+            "embeddingDisabled": false,
+            "threadMuted": false,
+          },
+        },
+      },
+    },
+  ],
+}
+`;
+
+exports[`appview thread views v2 > simple thread > returns thread anchored on 2.0 1`] = `
+{
+  "hasOtherReplies": false,
+  "thread": [
+    {
+      "depth": -2,
+      "uri": "record(0)",
+      "value": {
+        "$type": "app.bsky.unspecced.defs#threadItemPost",
+        "hiddenByThreadgate": false,
+        "moreParents": false,
+        "moreReplies": 0,
+        "mutedByViewer": false,
+        "opThread": true,
+        "opThreadPostCount": 3,
+        "opThreadPostIndex": 1,
+        "post": {
+          "author": {
+            "associated": {
+              "activitySubscription": {
+                "allowSubscriptions": "followers",
+              },
+            },
+            "did": "user(0)",
+            "handle": "simple-op.test",
+            "labels": [],
+            "viewer": {
+              "blockedBy": false,
+              "muted": false,
+              "mutedOnlyQuoteposts": false,
+              "mutedOnlyReposts": false,
+            },
+          },
+          "bookmarkCount": 0,
+          "cid": "cids(0)",
+          "indexedAt": "1970-01-01T00:00:00.000Z",
+          "labels": [],
+          "likeCount": 0,
+          "quoteCount": 0,
+          "record": {
+            "$type": "app.bsky.feed.post",
+            "createdAt": "1970-01-01T00:00:00.000Z",
+            "text": "root",
+          },
+          "replyCount": 4,
+          "repostCount": 0,
+          "uri": "record(0)",
+          "viewer": {
+            "bookmarked": false,
+            "embeddingDisabled": false,
+            "threadMuted": false,
+          },
+        },
+      },
+    },
+    {
+      "depth": -1,
+      "uri": "record(1)",
+      "value": {
+        "$type": "app.bsky.unspecced.defs#threadItemPost",
+        "hiddenByThreadgate": false,
+        "moreParents": false,
+        "moreReplies": 0,
+        "mutedByViewer": false,
+        "opThread": false,
+        "post": {
+          "author": {
+            "associated": {
+              "activitySubscription": {
+                "allowSubscriptions": "followers",
+              },
+            },
+            "did": "user(1)",
+            "handle": "simple-bob.test",
+            "labels": [],
+            "viewer": {
+              "blockedBy": false,
+              "muted": false,
+              "mutedOnlyQuoteposts": false,
+              "mutedOnlyReposts": false,
+            },
+          },
+          "bookmarkCount": 0,
+          "cid": "cids(1)",
+          "indexedAt": "1970-01-01T00:00:00.000Z",
+          "labels": [],
+          "likeCount": 0,
+          "quoteCount": 0,
+          "record": {
+            "$type": "app.bsky.feed.post",
+            "createdAt": "1970-01-01T00:00:00.000Z",
+            "reply": {
+              "parent": {
+                "cid": "cids(0)",
+                "uri": "record(0)",
+              },
+              "root": {
+                "cid": "cids(0)",
+                "uri": "record(0)",
+              },
+            },
+            "text": "2",
+          },
+          "replyCount": 1,
+          "repostCount": 0,
+          "uri": "record(1)",
+          "viewer": {
+            "bookmarked": false,
+            "embeddingDisabled": false,
+            "threadMuted": false,
+          },
+        },
+      },
+    },
+    {
+      "depth": 0,
+      "uri": "record(2)",
+      "value": {
+        "$type": "app.bsky.unspecced.defs#threadItemPost",
+        "hiddenByThreadgate": false,
+        "moreParents": false,
+        "moreReplies": 0,
+        "mutedByViewer": false,
+        "opThread": false,
+        "post": {
+          "author": {
+            "associated": {
+              "activitySubscription": {
+                "allowSubscriptions": "followers",
+              },
+            },
+            "did": "user(2)",
+            "handle": "simple-alice.test",
+            "labels": [],
+            "viewer": {
+              "blockedBy": false,
+              "muted": false,
+              "mutedOnlyQuoteposts": false,
+              "mutedOnlyReposts": false,
+            },
+          },
+          "bookmarkCount": 0,
+          "cid": "cids(2)",
+          "indexedAt": "1970-01-01T00:00:00.000Z",
+          "labels": [],
+          "likeCount": 0,
+          "quoteCount": 0,
+          "record": {
+            "$type": "app.bsky.feed.post",
+            "createdAt": "1970-01-01T00:00:00.000Z",
+            "reply": {
+              "parent": {
+                "cid": "cids(1)",
+                "uri": "record(1)",
+              },
+              "root": {
+                "cid": "cids(0)",
+                "uri": "record(0)",
+              },
+            },
+            "text": "2.0",
+          },
+          "replyCount": 0,
+          "repostCount": 0,
+          "uri": "record(2)",
+          "viewer": {
+            "bookmarked": false,
+            "embeddingDisabled": false,
+            "threadMuted": false,
+          },
+        },
+      },
+    },
+  ],
+}
+`;
+
+exports[`appview thread views v2 > simple thread > returns thread anchored on 3 1`] = `
+{
+  "hasOtherReplies": false,
+  "thread": [
+    {
+      "depth": -1,
+      "uri": "record(0)",
+      "value": {
+        "$type": "app.bsky.unspecced.defs#threadItemPost",
+        "hiddenByThreadgate": false,
+        "moreParents": false,
+        "moreReplies": 0,
+        "mutedByViewer": false,
+        "opThread": true,
+        "opThreadPostCount": 3,
+        "opThreadPostIndex": 1,
+        "post": {
+          "author": {
+            "associated": {
+              "activitySubscription": {
+                "allowSubscriptions": "followers",
+              },
+            },
+            "did": "user(0)",
+            "handle": "simple-op.test",
+            "labels": [],
+            "viewer": {
+              "blockedBy": false,
+              "muted": false,
+              "mutedOnlyQuoteposts": false,
+              "mutedOnlyReposts": false,
+            },
+          },
+          "bookmarkCount": 0,
+          "cid": "cids(0)",
+          "indexedAt": "1970-01-01T00:00:00.000Z",
+          "labels": [],
+          "likeCount": 0,
+          "quoteCount": 0,
+          "record": {
+            "$type": "app.bsky.feed.post",
+            "createdAt": "1970-01-01T00:00:00.000Z",
+            "text": "root",
+          },
+          "replyCount": 4,
+          "repostCount": 0,
+          "uri": "record(0)",
+          "viewer": {
+            "bookmarked": false,
+            "embeddingDisabled": false,
+            "threadMuted": false,
+          },
+        },
+      },
+    },
+    {
+      "depth": 0,
+      "uri": "record(1)",
+      "value": {
+        "$type": "app.bsky.unspecced.defs#threadItemPost",
+        "hiddenByThreadgate": false,
+        "moreParents": false,
+        "moreReplies": 0,
+        "mutedByViewer": false,
+        "opThread": false,
+        "post": {
+          "author": {
+            "associated": {
+              "activitySubscription": {
+                "allowSubscriptions": "followers",
+              },
+            },
+            "did": "user(1)",
+            "handle": "simple-carol.test",
+            "labels": [],
+            "viewer": {
+              "blockedBy": false,
+              "muted": false,
+              "mutedOnlyQuoteposts": false,
+              "mutedOnlyReposts": false,
+            },
+          },
+          "bookmarkCount": 0,
+          "cid": "cids(1)",
+          "indexedAt": "1970-01-01T00:00:00.000Z",
+          "labels": [],
+          "likeCount": 0,
+          "quoteCount": 0,
+          "record": {
+            "$type": "app.bsky.feed.post",
+            "createdAt": "1970-01-01T00:00:00.000Z",
+            "reply": {
+              "parent": {
+                "cid": "cids(0)",
+                "uri": "record(0)",
+              },
+              "root": {
+                "cid": "cids(0)",
+                "uri": "record(0)",
+              },
+            },
+            "text": "3",
+          },
+          "replyCount": 0,
+          "repostCount": 0,
+          "uri": "record(1)",
+          "viewer": {
+            "bookmarked": false,
+            "embeddingDisabled": false,
+            "threadMuted": false,
+          },
+        },
+      },
+    },
+  ],
+}
+`;
+
+exports[`appview thread views v2 > simple thread > returns thread anchored on r 0 1`] = `
+{
+  "hasOtherReplies": false,
+  "thread": [
+    {
+      "depth": -1,
+      "uri": "record(0)",
+      "value": {
+        "$type": "app.bsky.unspecced.defs#threadItemPost",
+        "hiddenByThreadgate": false,
+        "moreParents": false,
+        "moreReplies": 0,
+        "mutedByViewer": false,
+        "opThread": true,
+        "opThreadPostCount": 3,
+        "opThreadPostIndex": 1,
+        "post": {
+          "author": {
+            "associated": {
+              "activitySubscription": {
+                "allowSubscriptions": "followers",
+              },
+            },
+            "did": "user(0)",
+            "handle": "simple-op.test",
+            "labels": [],
+            "viewer": {
+              "blockedBy": false,
+              "muted": false,
+              "mutedOnlyQuoteposts": false,
+              "mutedOnlyReposts": false,
+            },
+          },
+          "bookmarkCount": 0,
+          "cid": "cids(0)",
+          "indexedAt": "1970-01-01T00:00:00.000Z",
+          "labels": [],
+          "likeCount": 0,
+          "quoteCount": 0,
+          "record": {
+            "$type": "app.bsky.feed.post",
+            "createdAt": "1970-01-01T00:00:00.000Z",
+            "text": "root",
+          },
+          "replyCount": 4,
+          "repostCount": 0,
+          "uri": "record(0)",
+          "viewer": {
+            "bookmarked": false,
+            "embeddingDisabled": false,
+            "threadMuted": false,
+          },
+        },
+      },
+    },
+    {
+      "depth": 0,
+      "uri": "record(1)",
+      "value": {
+        "$type": "app.bsky.unspecced.defs#threadItemPost",
+        "hiddenByThreadgate": false,
+        "moreParents": false,
+        "moreReplies": 0,
+        "mutedByViewer": false,
+        "opThread": true,
+        "opThreadPostCount": 3,
+        "opThreadPostIndex": 2,
+        "post": {
+          "author": {
+            "associated": {
+              "activitySubscription": {
+                "allowSubscriptions": "followers",
+              },
+            },
+            "did": "user(0)",
+            "handle": "simple-op.test",
+            "labels": [],
+            "viewer": {
+              "blockedBy": false,
+              "muted": false,
+              "mutedOnlyQuoteposts": false,
+              "mutedOnlyReposts": false,
+            },
+          },
+          "bookmarkCount": 0,
+          "cid": "cids(1)",
+          "indexedAt": "1970-01-01T00:00:00.000Z",
+          "labels": [],
+          "likeCount": 0,
+          "quoteCount": 0,
+          "record": {
+            "$type": "app.bsky.feed.post",
+            "createdAt": "1970-01-01T00:00:00.000Z",
+            "reply": {
+              "parent": {
+                "cid": "cids(0)",
+                "uri": "record(0)",
+              },
+              "root": {
+                "cid": "cids(0)",
+                "uri": "record(0)",
+              },
+            },
+            "text": "0",
+          },
+          "replyCount": 1,
+          "repostCount": 0,
+          "uri": "record(1)",
+          "viewer": {
+            "bookmarked": false,
+            "embeddingDisabled": false,
+            "threadMuted": false,
+          },
+        },
+      },
+    },
+    {
+      "depth": 1,
+      "uri": "record(2)",
+      "value": {
+        "$type": "app.bsky.unspecced.defs#threadItemPost",
+        "hiddenByThreadgate": false,
+        "moreParents": false,
+        "moreReplies": 0,
+        "mutedByViewer": false,
+        "opThread": true,
+        "opThreadPostCount": 3,
+        "opThreadPostIndex": 3,
+        "post": {
+          "author": {
+            "associated": {
+              "activitySubscription": {
+                "allowSubscriptions": "followers",
+              },
+            },
+            "did": "user(0)",
+            "handle": "simple-op.test",
+            "labels": [],
+            "viewer": {
+              "blockedBy": false,
+              "muted": false,
+              "mutedOnlyQuoteposts": false,
+              "mutedOnlyReposts": false,
+            },
+          },
+          "bookmarkCount": 0,
+          "cid": "cids(2)",
+          "indexedAt": "1970-01-01T00:00:00.000Z",
+          "labels": [],
+          "likeCount": 0,
+          "quoteCount": 0,
+          "record": {
+            "$type": "app.bsky.feed.post",
+            "createdAt": "1970-01-01T00:00:00.000Z",
+            "reply": {
+              "parent": {
+                "cid": "cids(1)",
+                "uri": "record(1)",
+              },
+              "root": {
+                "cid": "cids(0)",
+                "uri": "record(0)",
+              },
+            },
+            "text": "0.0",
+          },
+          "replyCount": 0,
+          "repostCount": 0,
+          "uri": "record(2)",
+          "viewer": {
+            "bookmarked": false,
+            "embeddingDisabled": false,
+            "threadMuted": false,
+          },
+        },
+      },
+    },
+  ],
+}
+`;
+
+exports[`appview thread views v2 > simple thread > returns thread anchored on r 0.0 1`] = `
+{
+  "hasOtherReplies": false,
+  "thread": [
+    {
+      "depth": -2,
+      "uri": "record(0)",
+      "value": {
+        "$type": "app.bsky.unspecced.defs#threadItemPost",
+        "hiddenByThreadgate": false,
+        "moreParents": false,
+        "moreReplies": 0,
+        "mutedByViewer": false,
+        "opThread": true,
+        "opThreadPostCount": 3,
+        "opThreadPostIndex": 1,
+        "post": {
+          "author": {
+            "associated": {
+              "activitySubscription": {
+                "allowSubscriptions": "followers",
+              },
+            },
+            "did": "user(0)",
+            "handle": "simple-op.test",
+            "labels": [],
+            "viewer": {
+              "blockedBy": false,
+              "muted": false,
+              "mutedOnlyQuoteposts": false,
+              "mutedOnlyReposts": false,
+            },
+          },
+          "bookmarkCount": 0,
+          "cid": "cids(0)",
+          "indexedAt": "1970-01-01T00:00:00.000Z",
+          "labels": [],
+          "likeCount": 0,
+          "quoteCount": 0,
+          "record": {
+            "$type": "app.bsky.feed.post",
+            "createdAt": "1970-01-01T00:00:00.000Z",
+            "text": "root",
+          },
+          "replyCount": 4,
+          "repostCount": 0,
+          "uri": "record(0)",
+          "viewer": {
+            "bookmarked": false,
+            "embeddingDisabled": false,
+            "threadMuted": false,
+          },
+        },
+      },
+    },
+    {
+      "depth": -1,
+      "uri": "record(1)",
+      "value": {
+        "$type": "app.bsky.unspecced.defs#threadItemPost",
+        "hiddenByThreadgate": false,
+        "moreParents": false,
+        "moreReplies": 0,
+        "mutedByViewer": false,
+        "opThread": true,
+        "opThreadPostCount": 3,
+        "opThreadPostIndex": 2,
+        "post": {
+          "author": {
+            "associated": {
+              "activitySubscription": {
+                "allowSubscriptions": "followers",
+              },
+            },
+            "did": "user(0)",
+            "handle": "simple-op.test",
+            "labels": [],
+            "viewer": {
+              "blockedBy": false,
+              "muted": false,
+              "mutedOnlyQuoteposts": false,
+              "mutedOnlyReposts": false,
+            },
+          },
+          "bookmarkCount": 0,
+          "cid": "cids(1)",
+          "indexedAt": "1970-01-01T00:00:00.000Z",
+          "labels": [],
+          "likeCount": 0,
+          "quoteCount": 0,
+          "record": {
+            "$type": "app.bsky.feed.post",
+            "createdAt": "1970-01-01T00:00:00.000Z",
+            "reply": {
+              "parent": {
+                "cid": "cids(0)",
+                "uri": "record(0)",
+              },
+              "root": {
+                "cid": "cids(0)",
+                "uri": "record(0)",
+              },
+            },
+            "text": "0",
+          },
+          "replyCount": 1,
+          "repostCount": 0,
+          "uri": "record(1)",
+          "viewer": {
+            "bookmarked": false,
+            "embeddingDisabled": false,
+            "threadMuted": false,
+          },
+        },
+      },
+    },
+    {
+      "depth": 0,
+      "uri": "record(2)",
+      "value": {
+        "$type": "app.bsky.unspecced.defs#threadItemPost",
+        "hiddenByThreadgate": false,
+        "moreParents": false,
+        "moreReplies": 0,
+        "mutedByViewer": false,
+        "opThread": true,
+        "opThreadPostCount": 3,
+        "opThreadPostIndex": 3,
+        "post": {
+          "author": {
+            "associated": {
+              "activitySubscription": {
+                "allowSubscriptions": "followers",
+              },
+            },
+            "did": "user(0)",
+            "handle": "simple-op.test",
+            "labels": [],
+            "viewer": {
+              "blockedBy": false,
+              "muted": false,
+              "mutedOnlyQuoteposts": false,
+              "mutedOnlyReposts": false,
+            },
+          },
+          "bookmarkCount": 0,
+          "cid": "cids(2)",
+          "indexedAt": "1970-01-01T00:00:00.000Z",
+          "labels": [],
+          "likeCount": 0,
+          "quoteCount": 0,
+          "record": {
+            "$type": "app.bsky.feed.post",
+            "createdAt": "1970-01-01T00:00:00.000Z",
+            "reply": {
+              "parent": {
+                "cid": "cids(1)",
+                "uri": "record(1)",
+              },
+              "root": {
+                "cid": "cids(0)",
+                "uri": "record(0)",
+              },
+            },
+            "text": "0.0",
+          },
+          "replyCount": 0,
+          "repostCount": 0,
+          "uri": "record(2)",
+          "viewer": {
+            "bookmarked": false,
+            "embeddingDisabled": false,
+            "threadMuted": false,
+          },
+        },
+      },
+    },
+  ],
+}
+`;
+
+exports[`appview thread views v2 > simple thread > returns thread anchored on root 1`] = `
+{
+  "hasOtherReplies": false,
+  "thread": [
+    {
+      "depth": 0,
+      "uri": "record(0)",
+      "value": {
+        "$type": "app.bsky.unspecced.defs#threadItemPost",
+        "hiddenByThreadgate": false,
+        "moreParents": false,
+        "moreReplies": 0,
+        "mutedByViewer": false,
+        "opThread": true,
+        "opThreadPostCount": 3,
+        "opThreadPostIndex": 1,
+        "post": {
+          "author": {
+            "associated": {
+              "activitySubscription": {
+                "allowSubscriptions": "followers",
+              },
+            },
+            "did": "user(0)",
+            "handle": "simple-op.test",
+            "labels": [],
+            "viewer": {
+              "blockedBy": false,
+              "muted": false,
+              "mutedOnlyQuoteposts": false,
+              "mutedOnlyReposts": false,
+            },
+          },
+          "bookmarkCount": 0,
+          "cid": "cids(0)",
+          "indexedAt": "1970-01-01T00:00:00.000Z",
+          "labels": [],
+          "likeCount": 0,
+          "quoteCount": 0,
+          "record": {
+            "$type": "app.bsky.feed.post",
+            "createdAt": "1970-01-01T00:00:00.000Z",
+            "text": "root",
+          },
+          "replyCount": 4,
+          "repostCount": 0,
+          "uri": "record(0)",
+          "viewer": {
+            "bookmarked": false,
+            "embeddingDisabled": false,
+            "threadMuted": false,
+          },
+        },
+      },
+    },
+    {
+      "depth": 1,
+      "uri": "record(1)",
+      "value": {
+        "$type": "app.bsky.unspecced.defs#threadItemPost",
+        "hiddenByThreadgate": false,
+        "moreParents": false,
+        "moreReplies": 0,
+        "mutedByViewer": false,
+        "opThread": true,
+        "opThreadPostCount": 3,
+        "opThreadPostIndex": 2,
+        "post": {
+          "author": {
+            "associated": {
+              "activitySubscription": {
+                "allowSubscriptions": "followers",
+              },
+            },
+            "did": "user(0)",
+            "handle": "simple-op.test",
+            "labels": [],
+            "viewer": {
+              "blockedBy": false,
+              "muted": false,
+              "mutedOnlyQuoteposts": false,
+              "mutedOnlyReposts": false,
+            },
+          },
+          "bookmarkCount": 0,
+          "cid": "cids(1)",
+          "indexedAt": "1970-01-01T00:00:00.000Z",
+          "labels": [],
+          "likeCount": 0,
+          "quoteCount": 0,
+          "record": {
+            "$type": "app.bsky.feed.post",
+            "createdAt": "1970-01-01T00:00:00.000Z",
+            "reply": {
+              "parent": {
+                "cid": "cids(0)",
+                "uri": "record(0)",
+              },
+              "root": {
+                "cid": "cids(0)",
+                "uri": "record(0)",
+              },
+            },
+            "text": "0",
+          },
+          "replyCount": 1,
+          "repostCount": 0,
+          "uri": "record(1)",
+          "viewer": {
+            "bookmarked": false,
+            "embeddingDisabled": false,
+            "threadMuted": false,
+          },
+        },
+      },
+    },
+    {
+      "depth": 2,
+      "uri": "record(2)",
+      "value": {
+        "$type": "app.bsky.unspecced.defs#threadItemPost",
+        "hiddenByThreadgate": false,
+        "moreParents": false,
+        "moreReplies": 0,
+        "mutedByViewer": false,
+        "opThread": true,
+        "opThreadPostCount": 3,
+        "opThreadPostIndex": 3,
+        "post": {
+          "author": {
+            "associated": {
+              "activitySubscription": {
+                "allowSubscriptions": "followers",
+              },
+            },
+            "did": "user(0)",
+            "handle": "simple-op.test",
+            "labels": [],
+            "viewer": {
+              "blockedBy": false,
+              "muted": false,
+              "mutedOnlyQuoteposts": false,
+              "mutedOnlyReposts": false,
+            },
+          },
+          "bookmarkCount": 0,
+          "cid": "cids(2)",
+          "indexedAt": "1970-01-01T00:00:00.000Z",
+          "labels": [],
+          "likeCount": 0,
+          "quoteCount": 0,
+          "record": {
+            "$type": "app.bsky.feed.post",
+            "createdAt": "1970-01-01T00:00:00.000Z",
+            "reply": {
+              "parent": {
+                "cid": "cids(1)",
+                "uri": "record(1)",
+              },
+              "root": {
+                "cid": "cids(0)",
+                "uri": "record(0)",
+              },
+            },
+            "text": "0.0",
+          },
+          "replyCount": 0,
+          "repostCount": 0,
+          "uri": "record(2)",
+          "viewer": {
+            "bookmarked": false,
+            "embeddingDisabled": false,
+            "threadMuted": false,
+          },
+        },
+      },
+    },
+    {
+      "depth": 1,
+      "uri": "record(3)",
+      "value": {
+        "$type": "app.bsky.unspecced.defs#threadItemPost",
+        "hiddenByThreadgate": false,
+        "moreParents": false,
+        "moreReplies": 0,
+        "mutedByViewer": false,
+        "opThread": false,
+        "post": {
+          "author": {
+            "associated": {
+              "activitySubscription": {
+                "allowSubscriptions": "followers",
+              },
+            },
+            "did": "user(1)",
+            "handle": "simple-alice.test",
+            "labels": [],
+            "viewer": {
+              "blockedBy": false,
+              "muted": false,
+              "mutedOnlyQuoteposts": false,
+              "mutedOnlyReposts": false,
+            },
+          },
+          "bookmarkCount": 0,
+          "cid": "cids(3)",
+          "indexedAt": "1970-01-01T00:00:00.000Z",
+          "labels": [],
+          "likeCount": 0,
+          "quoteCount": 0,
+          "record": {
+            "$type": "app.bsky.feed.post",
+            "createdAt": "1970-01-01T00:00:00.000Z",
+            "reply": {
+              "parent": {
+                "cid": "cids(0)",
+                "uri": "record(0)",
+              },
+              "root": {
+                "cid": "cids(0)",
+                "uri": "record(0)",
+              },
+            },
+            "text": "1",
+          },
+          "replyCount": 0,
+          "repostCount": 0,
+          "uri": "record(3)",
+          "viewer": {
+            "bookmarked": false,
+            "embeddingDisabled": false,
+            "threadMuted": false,
+          },
+        },
+      },
+    },
+    {
+      "depth": 1,
+      "uri": "record(4)",
+      "value": {
+        "$type": "app.bsky.unspecced.defs#threadItemPost",
+        "hiddenByThreadgate": false,
+        "moreParents": false,
+        "moreReplies": 0,
+        "mutedByViewer": false,
+        "opThread": false,
+        "post": {
+          "author": {
+            "associated": {
+              "activitySubscription": {
+                "allowSubscriptions": "followers",
+              },
+            },
+            "did": "user(2)",
+            "handle": "simple-bob.test",
+            "labels": [],
+            "viewer": {
+              "blockedBy": false,
+              "muted": false,
+              "mutedOnlyQuoteposts": false,
+              "mutedOnlyReposts": false,
+            },
+          },
+          "bookmarkCount": 0,
+          "cid": "cids(4)",
+          "indexedAt": "1970-01-01T00:00:00.000Z",
+          "labels": [],
+          "likeCount": 0,
+          "quoteCount": 0,
+          "record": {
+            "$type": "app.bsky.feed.post",
+            "createdAt": "1970-01-01T00:00:00.000Z",
+            "reply": {
+              "parent": {
+                "cid": "cids(0)",
+                "uri": "record(0)",
+              },
+              "root": {
+                "cid": "cids(0)",
+                "uri": "record(0)",
+              },
+            },
+            "text": "2",
+          },
+          "replyCount": 1,
+          "repostCount": 0,
+          "uri": "record(4)",
+          "viewer": {
+            "bookmarked": false,
+            "embeddingDisabled": false,
+            "threadMuted": false,
+          },
+        },
+      },
+    },
+    {
+      "depth": 2,
+      "uri": "record(5)",
+      "value": {
+        "$type": "app.bsky.unspecced.defs#threadItemPost",
+        "hiddenByThreadgate": false,
+        "moreParents": false,
+        "moreReplies": 0,
+        "mutedByViewer": false,
+        "opThread": false,
+        "post": {
+          "author": {
+            "associated": {
+              "activitySubscription": {
+                "allowSubscriptions": "followers",
+              },
+            },
+            "did": "user(1)",
+            "handle": "simple-alice.test",
+            "labels": [],
+            "viewer": {
+              "blockedBy": false,
+              "muted": false,
+              "mutedOnlyQuoteposts": false,
+              "mutedOnlyReposts": false,
+            },
+          },
+          "bookmarkCount": 0,
+          "cid": "cids(5)",
+          "indexedAt": "1970-01-01T00:00:00.000Z",
+          "labels": [],
+          "likeCount": 0,
+          "quoteCount": 0,
+          "record": {
+            "$type": "app.bsky.feed.post",
+            "createdAt": "1970-01-01T00:00:00.000Z",
+            "reply": {
+              "parent": {
+                "cid": "cids(4)",
+                "uri": "record(4)",
+              },
+              "root": {
+                "cid": "cids(0)",
+                "uri": "record(0)",
+              },
+            },
+            "text": "2.0",
+          },
+          "replyCount": 0,
+          "repostCount": 0,
+          "uri": "record(5)",
+          "viewer": {
+            "bookmarked": false,
+            "embeddingDisabled": false,
+            "threadMuted": false,
+          },
+        },
+      },
+    },
+    {
+      "depth": 1,
+      "uri": "record(6)",
+      "value": {
+        "$type": "app.bsky.unspecced.defs#threadItemPost",
+        "hiddenByThreadgate": false,
+        "moreParents": false,
+        "moreReplies": 0,
+        "mutedByViewer": false,
+        "opThread": false,
+        "post": {
+          "author": {
+            "associated": {
+              "activitySubscription": {
+                "allowSubscriptions": "followers",
+              },
+            },
+            "did": "user(3)",
+            "handle": "simple-carol.test",
+            "labels": [],
+            "viewer": {
+              "blockedBy": false,
+              "muted": false,
+              "mutedOnlyQuoteposts": false,
+              "mutedOnlyReposts": false,
+            },
+          },
+          "bookmarkCount": 0,
+          "cid": "cids(6)",
+          "indexedAt": "1970-01-01T00:00:00.000Z",
+          "labels": [],
+          "likeCount": 0,
+          "quoteCount": 0,
+          "record": {
+            "$type": "app.bsky.feed.post",
+            "createdAt": "1970-01-01T00:00:00.000Z",
+            "reply": {
+              "parent": {
+                "cid": "cids(0)",
+                "uri": "record(0)",
+              },
+              "root": {
+                "cid": "cids(0)",
+                "uri": "record(0)",
+              },
+            },
+            "text": "3",
+          },
+          "replyCount": 0,
+          "repostCount": 0,
+          "uri": "record(6)",
+          "viewer": {
+            "bookmarked": false,
+            "embeddingDisabled": false,
+            "threadMuted": false,
+          },
+        },
+      },
+    },
+  ],
+}
+`;

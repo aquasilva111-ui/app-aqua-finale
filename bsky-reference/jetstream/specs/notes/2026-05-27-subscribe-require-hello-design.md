@@ -1,0 +1,3 @@
+# `requireHello` Support in `/subscribe` — Design
+
+**Status: approved pre-implementation design.** The proposed `?requireHello=true` behavior delayed event subscription until the first valid `options_update`, matching the v1-visible contract while retaining ping and disconnect behavior. The decision reused the existing options-update path rather than adding a separate handshake protocol. Tests were to cover blocking, invalid updates, disconnect cleanup, and repeated updates in `internal/subscribe/handler_test.go`; implementation centered on `internal/subscribe/handler.go` and `internal/subscribe/doc.go`.

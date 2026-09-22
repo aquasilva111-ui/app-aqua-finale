@@ -1,0 +1,53 @@
+# If you prefer the allow list template instead of the deny list, see community template:
+# https://github.com/github/gitignore/blob/main/community/Golang/Go.AllowList.gitignore
+#
+# Binaries for programs and plugins
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+/bin/
+*__debug_bin*
+
+# Test binary, built with `go test -c`
+*.test
+
+# Code coverage profiles and other test artifacts
+*.out
+coverage.*
+*.coverprofile
+profile.cov
+
+# Dependency directories (remove the comment below to include it)
+# vendor/
+
+# Go workspace file
+go.work
+go.work.sum
+
+# Note: .env is intentionally committed at the repo root with
+# simulator-pointing dev defaults. Do not put secrets in it.
+
+# Editor/IDE
+# .idea/
+# .vscode/
+
+# Files not for distribution
+/.superpowers
+/data*
+
+# Local oracle-sweep diagnostic artifacts (trace + captured test output).
+# In CI these are written under a workspace path and uploaded on failure.
+# Unanchored: the restart child subprocess runs with CWD=internal/oracle, so
+# the default ORACLE_ARTIFACT_DIR can also resolve there.
+oracle-artifacts/
+
+# Local `just mutation-gate` / `mutation-campaign` output (the JSON scorecard).
+# CI writes it under a workspace path (MUTATION_RESULT_JSON); locally it
+# defaults to the repo root. The committed source of truth is
+# testing/mutation/baseline.json, not this run artifact.
+/mutation-result.json
+# Local binaries built at the repo root (`go build ./cmd/...`, testing/dicttrain)
+/client
+/dicttrain

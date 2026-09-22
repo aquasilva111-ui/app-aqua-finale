@@ -1,0 +1,94 @@
+import type { DidString } from '@atproto/lex'
+import { InvalidRequestError } from '@atproto/xrpc-server'
+import { tools } from '../../lexicons/index.js'
+import { ProtectedTagSettingKey } from '../../setting/constants.js'
+import type { SettingService } from '../../setting/service.js'
+import type { ProtectedTagSetting } from '../../setting/types.js'
+
+export const getProtectedTags = async (
+  settingService: SettingService,
+  serviceDid: DidString,
+) => {
+  const protectedTagSetting = await settingService.query({
+    keys: [ProtectedTagSettingKey],
+    scope: 'instance',
+    did: serviceDid,
+    limit: 1,
+  })
+
+  // if no protected tags are configured, then no need to do further check
+  if (!protectedTagSetting.options.length) {
+    return
+  }
+
+  return protectedTagSetting.options[0].value as ProtectedTagSetting
+}
+
+export const assertProtectedTagAction = ({
+  protectedTags,
+  subjectTags,
+  actionAuthor,
+  isModerator,
+  isAdmin,
+  isTriage,
+}: {
+  protectedTags: ProtectedTagSetting
+  subjectTags: string[]
+  actionAuthor: string
+  isModerator: boolean
+  isAdmin: boolean
+  isTriage: boolean
+}) => {
+  subjectTags.forEach((tag) => {
+    if (!Object.hasOwn(protectedTags, tag)) return
+    if (
+      protectedTags[tag]['moderators'] &&
+      !protectedTags[tag]['moderators'].includes(actionAuthor)
+    ) {
+      throw new InvalidRequestError(
+        `Not allowed to action on protected tag: ${tag}`,
+      )
+    }
+
+    if (protectedTags[tag]['roles']) {
+      if (isAdmin) {
+        if (
+          protectedTags[tag]['roles'].includes(tools.ozone.team.defs.RoleAdmin)
+        ) {
+          return
+        }
+        throw new InvalidRequestError(
+          `Not allowed to action on protected tag: ${tag}`,
+        )
+      }
+
+      if (isModerator) {
+        if (
+          protectedTags[tag]['roles'].includes(
+            tools.ozone.team.defs.RoleModerator,
+          )
+        ) {
+          return
+        }
+
+        throw new InvalidRequestError(
+          `Not allowed to action on protected tag: ${tag}`,
+        )
+      }
+
+      if (isTriage) {
+        if (
+          protectedTags[tag]['roles'].includes(tools.ozone.team.defs.RoleTriage)
+        ) {
+          return
+        }
+
+        throw new InvalidRequestError(
+          `Not allowed to action on protected tag: ${tag}`,
+        )
+      }
+    }
+  })
+}
+
+export const ScheduledTakedownTag = 'scheduled-takedown'

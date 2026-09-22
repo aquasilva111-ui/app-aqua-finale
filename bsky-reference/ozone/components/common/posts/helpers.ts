@@ -1,0 +1,29 @@
+import {
+  $Typed,
+  AppBskyEmbedExternal,
+  AppBskyEmbedGallery,
+  AppBskyEmbedImages,
+  AppBskyEmbedRecord,
+  AppBskyEmbedRecordWithMedia,
+  AppBskyEmbedVideo,
+  AppBskyFeedDefs,
+  AppBskyFeedPost,
+  asPredicate,
+} from '@atproto/api'
+
+export const isValidPostRecord = asPredicate(AppBskyFeedPost.validateRecord)
+
+export type KnownEmbedView =
+  | $Typed<AppBskyEmbedExternal.View>
+  | $Typed<AppBskyEmbedGallery.View>
+  | $Typed<AppBskyEmbedImages.View>
+  | $Typed<AppBskyEmbedRecord.View>
+  | $Typed<AppBskyEmbedVideo.View>
+
+export function extractEmbeds(
+  post: AppBskyFeedDefs.PostView,
+): (KnownEmbedView | { $type: string } | undefined)[] {
+  return AppBskyEmbedRecordWithMedia.isView(post.embed)
+    ? [post.embed.media, post.embed.record.record]
+    : [post.embed]
+}

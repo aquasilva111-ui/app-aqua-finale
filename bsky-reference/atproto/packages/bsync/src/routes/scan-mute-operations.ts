@@ -1,0 +1,71 @@
+import { once } from 'node:events'
+import type { ServiceImpl } from '@connectrpc/connect'
+import type { AppContext } from '../context.js'
+import { createMuteOpChannel } from '../db/schema/mute_op.js'
+import type { Service } from '../proto/bsync_connect.js'
+import { ScanMuteOperationsResponse } from '../proto/bsync_pb.js'
+import { authWithApiKey } from './auth.js'
+import { combinedSignals, validCursor } from './util.js'
+
+export default (ctx: AppContext): Partial<ServiceImpl<typeof Service>> => ({
+  async scanMuteOperations(req, handlerCtx) {
+    authWithApiKey(ctx, handlerCtx)
+    const { db, events } = ctx
+    const limit = req.limit || 1000
+    const cursor = validCursor(req.cursor)
+
+    using signal = combinedSignals(
+      ctx.shutdown,
+      AbortSignal.timeout(ctx.cfg.service.longPollTimeoutMs),
+    )
+
+    const nextMuteOpPromise = once(events, createMuteOpChannel, { signal })
+
+    // awaited later
+    void nextMuteOpPromise.catch(() => null)
+
+    const nextMuteOpPageQb = db.db
+      .selectFrom('mute_op')
+      .selectAll()
+      .where('id', '>', cursor ?? -1)
+      .orderBy('id', 'asc')
+      .limit(limit)
+
+    let ops = await nextMuteOpPageQb.execute()
+
+    if (!ops.length) {
+      // if there were no ops on the page, wait for an event then try again.
+      try {
+        await nextMuteOpPromise
+      } catch (err) {
+        if (ctx.shutdown.aborted) throw err
+
+        return new ScanMuteOperationsResponse({
+          operations: [],
+          cursor: req.cursor,
+        })
+      }
+      ops = await nextMuteOpPageQb.execute()
+      if (!ops.length) {
+        return new ScanMuteOperationsResponse({
+          operations: [],
+          cursor: req.cursor,
+        })
+      }
+    }
+
+    const lastOp = ops[ops.length - 1]
+
+    return new ScanMuteOperationsResponse({
+      operations: ops.map((op) => ({
+        id: op.id.toString(),
+        type: op.type,
+        actorDid: op.actorDid,
+        subject: op.subject,
+        onlyReposts: op.onlyReposts,
+        onlyQuoteposts: op.onlyQuoteposts,
+      })),
+      cursor: lastOp.id.toString(),
+    })
+  },
+})

@@ -1,0 +1,367 @@
+package jetstream
+
+import (
+	"log/slog"
+	"net/http"
+	"runtime"
+)
+
+// Option configures a Client. Options are applied in order by Subscribe.
+type Option func(*config)
+
+// config is the resolved, validated client configuration. It is private:
+// callers build it exclusively through Option values.
+type config struct {
+	kinds          []Kind
+	collections    []string
+	dids           []string
+	hasAfterSeq    bool
+	afterSeq       uint64
+	hasBeforeSeq   bool
+	beforeSeq      uint64
+	snapshotOnly   bool
+	liveCursor     uint64
+	batchSize      int
+	downloadConc   int
+	segmentStripes int
+	// apiKey and hasAPIKey are constructor-only bearer-secret material. The
+	// explicit bit distinguishes an omitted key from WithAPIKey("").
+	apiKey    string
+	hasAPIKey bool
+	// httpClient is a caller override. nil is the sentinel for "unset":
+	// the engine then builds its own per-workload gttp clients
+	// (xrpc.ATProtoOpts for XRPC, xrpc.BulkDownloadOpts for bulk
+	// downloads). Do not install a default here — that would collapse the
+	// two-client tuning into one shared client. See WithHTTPClient.
+	httpClient *http.Client
+	logger     *slog.Logger
+	// maxDownloadAttempts, when > 0, caps the total number of attempts
+	// (initial + retries) the XRPC clients make per request. 0 (unset)
+	// leaves xrpc on its default retry policy. See WithMaxDownloadAttempts.
+	maxDownloadAttempts int
+	// rawRecords skips building Commit.Record map[string]any (see WithRawRecords);
+	// rawRecordsCopied additionally clones RecordCBOR so it is safe to retain
+	// (see WithRawRecordsCopied); rawRecordCIDs keeps computing Commit.CID in raw
+	// mode (see WithRawRecordCIDs).
+	rawRecords       bool
+	rawRecordsCopied bool
+	rawRecordCIDs    bool
+	// zstdCompression controls the live tail's default dict-zstd scheme
+	// (see WithZstdCompression).
+	zstdCompression bool
+}
+
+// Defaults applied when an option is not supplied.
+const (
+	defaultBatchSize = 64
+	// maxAutoDownloadConc caps the auto-sized download concurrency. Backfill
+	// throughput is decode-bound and, on the records we've measured, the decode
+	// pool stops scaling well before this many workers, so a higher cap buys no
+	// throughput while costing one in-flight ~segment-sized download buffer per
+	// worker (the compressed-file memory term) and one HTTP connection. 32 spans
+	// the measured scaling knee on big machines while staying modest on memory
+	// and connection count; operators who want more set WithDownloadConcurrency.
+	maxAutoDownloadConc = 32
+	// minAutoDownloadConc keeps small machines from dropping to a near-serial
+	// backfill: even a 2-core box should overlap a couple of downloads/decodes.
+	minAutoDownloadConc = 4
+)
+
+// defaultDownloadConc auto-sizes download/decode concurrency to the machine:
+// GOMAXPROCS (the cores actually available to this process, honoring cgroup
+// CPU limits), clamped to [minAutoDownloadConc, maxAutoDownloadConc]. This lets
+// a 256-core production host use far more of its cores out of the box than the
+// old fixed default of 8, while a laptop or a CPU-limited container stays
+// reasonable. WithDownloadConcurrency overrides it explicitly.
+func defaultDownloadConc() int {
+	n := runtime.GOMAXPROCS(0)
+	if n < minAutoDownloadConc {
+		return minAutoDownloadConc
+	}
+	if n > maxAutoDownloadConc {
+		return maxAutoDownloadConc
+	}
+	return n
+}
+
+func defaultConfig() config {
+	return config{
+		batchSize:       defaultBatchSize,
+		downloadConc:    defaultDownloadConc(),
+		zstdCompression: true,
+	}
+}
+
+// backfillRequested reports whether the caller asked for historical archive
+// replay (any seq bound) versus a pure live tail.
+func (c *config) backfillRequested() bool {
+	return c.hasAfterSeq || c.hasBeforeSeq
+}
+
+// WithKinds restricts delivery to the selected event kinds. Empty or unset
+// means all kinds. KindCommit includes create, update, delete, and resync
+// replacement records. Combine WithKinds([]Kind{KindCommit}) with
+// WithCollections for a commits-only collection stream.
+func WithKinds(kinds []Kind) Option {
+	return func(c *config) { c.kinds = append([]Kind(nil), kinds...) }
+}
+
+// WithCollections restricts delivery to the given collections. Each entry is
+// either an exact NSID (e.g. "app.bsky.feed.post") or a namespace wildcard
+// ending in ".*" (e.g. "app.bsky.feed.*"). Empty or unset means all
+// collections.
+//
+// A collection filter does NOT suppress DID-level events: Account, Identity,
+// and Sync carry no collection but always bypass the collection filter
+// (subject to WithDIDs), because they are a folding consumer's only signal to
+// purge a deleted account's records — hiding them would create a permanently
+// stale view. The client does not suppress deleted-account records during an
+// archive replay; consumers fold those markers themselves. With no collection
+// filter, Account and Identity events are likewise delivered, subject to
+// WithDIDs. See issue #142.
+func WithCollections(collections []string) Option {
+	return func(c *config) { c.collections = append([]string(nil), collections...) }
+}
+
+// WithCollection is shorthand for WithCollections with a single NSID.
+func WithCollection(collection string) Option {
+	return WithCollections([]string{collection})
+}
+
+// WithDIDs restricts delivery to the given DIDs. Empty or unset means all DIDs.
+// The DID filter applies to every event kind, including Account and Identity:
+// with a DID filter and no collection filter, you receive Account and Identity
+// events for the matching DIDs only.
+func WithDIDs(dids []string) Option {
+	return func(c *config) { c.dids = append([]string(nil), dids...) }
+}
+
+// WithDID is shorthand for WithDIDs with a single DID.
+func WithDID(did string) Option {
+	return WithDIDs([]string{did})
+}
+
+// WithAfterSeq sets the exclusive lower sequence bound for a replay: only
+// events with seq > afterSeq are delivered. Supplying it, including
+// WithAfterSeq(0) for the whole archive, starts with sealed-history replay
+// before the client cuts over to the live tail.
+func WithAfterSeq(seq uint64) Option {
+	return func(c *config) {
+		c.hasAfterSeq = true
+		c.afterSeq = seq
+	}
+}
+
+// WithBeforeSeq sets the inclusive upper sequence bound for an archive
+// snapshot: only events with seq <= beforeSeq are delivered.
+//
+// It requires WithSnapshotOnly. On a replay that continues into the live tail,
+// the same upper bound would silently drop every later live event, so Subscribe
+// rejects WithBeforeSeq unless WithSnapshotOnly is also set.
+func WithBeforeSeq(seq uint64) Option {
+	return func(c *config) {
+		c.hasBeforeSeq = true
+		c.beforeSeq = seq
+	}
+}
+
+// WithSnapshotOnly turns a replay into a point-in-time archive snapshot: it
+// downloads and delivers the matched sealed range, bounded by WithAfterSeq
+// and/or WithBeforeSeq, and then ends without starting the live tail.
+//
+// It requires a replay bound (WithAfterSeq and/or WithBeforeSeq); without one,
+// Subscribe returns an error. Records in the
+// active, unsealed segment (above the sealed tip) are only reachable via the
+// live tail and are therefore not included in the snapshot.
+func WithSnapshotOnly() Option {
+	return func(c *config) { c.snapshotOnly = true }
+}
+
+// WithLiveCursor resumes a pure live tail from a cursor. A value below 1e15 is
+// a previously saved sequence cursor (typically Batch.LastCursor from a prior
+// run); delivery resumes after it because the client deduplicates the server's
+// inclusive replay. For compatibility with Jetstream v1, a value at or above
+// 1e15 is a unix-microsecond timestamp: the server seeks to the first retained
+// event witnessed at or after that time, and the client establishes its seq
+// deduplication floor from the first event delivered.
+//
+// Timestamp resumes are at-least-once. They may re-deliver an event at the
+// boundary and must not be deduplicated by Event.TimeUS, which can be an
+// imported display timestamp rather than the witnessed time used for seeking.
+// Ignored when an archive replay is requested, since that workflow computes its
+// own live cutover cursor.
+func WithLiveCursor(seq uint64) Option {
+	return func(c *config) {
+		c.liveCursor = seq
+	}
+}
+
+// WithBatchSize sets the maximum number of events returned in a single Batch.
+// Must be > 0; ignored otherwise. Default 64.
+func WithBatchSize(n int) Option {
+	return func(c *config) {
+		if n > 0 {
+			c.batchSize = n
+		}
+	}
+}
+
+// WithDownloadConcurrency sizes archive-replay parallelism: n bounds the block
+// decode pool directly, and the block-mode getBlock fetch pool is derived from
+// it (2n, capped at 64) so sparse (DID/collection-filtered) replays overlap
+// network round trips instead of paying one RTT per block. Must be > 0;
+// ignored otherwise.
+//
+// Whole-segment downloads are prefetched ahead of decode one segment at a
+// time, striped across parallel range requests; WithSegmentStripes (a
+// separate, network-bound knob) controls that per-segment fan-out.
+//
+// The default is auto-sized from the CPU count (GOMAXPROCS, clamped to
+// [4, 32]), so a many-core host uses more of its cores without configuration
+// while small/CPU-limited environments stay modest. Set this to override the
+// auto-sizing — e.g. a higher value on a very large box, or a lower value to
+// cap memory (each in-flight download holds roughly one segment-sized buffer).
+func WithDownloadConcurrency(n int) Option {
+	return func(c *config) {
+		if n > 0 {
+			c.downloadConc = n
+		}
+	}
+}
+
+// WithSegmentStripes sets how many parallel HTTP range requests fetch each
+// whole sealed segment. Default 8: on typical internet paths, per-TCP-stream
+// congestion control is the throughput bound, and striping lets a segment
+// download claim multiple streams' worth of bandwidth. Must be > 0; ignored
+// otherwise.
+//
+// Set 1 for a single resumable stream. That can be the better choice on paths
+// where parallel streams cannot claim additional bandwidth — in our lab
+// measurements, a WireGuard tunnel (which encapsulates all TCP into one UDP
+// flow) ran 20-40% faster single-stream, and on a fast LAN the modes were
+// indistinguishable. Failed parts retry at part granularity either way, and
+// the single-stream mode resumes mid-segment on transient failure.
+func WithSegmentStripes(n int) Option {
+	return func(c *config) {
+		if n > 0 {
+			c.segmentStripes = n
+		}
+	}
+}
+
+// WithAPIKey authenticates archive negotiation and downloads with a bearer
+// API key. Pass the raw key, without a "Bearer " prefix. The key is sent on
+// planSnapshot, getSegment, and getBlock requests; it is not sent when fetching
+// the public zstd dictionary or upgrading the public live WebSocket.
+//
+// The value is a bearer secret. Use TLS when crossing an untrusted network,
+// and avoid putting the API key in logs or process arguments.
+func WithAPIKey(apiKey string) Option {
+	return func(c *config) {
+		c.apiKey = apiKey
+		c.hasAPIKey = true
+	}
+}
+
+// WithHTTPClient overrides the HTTP client used for XRPC negotiation, public
+// dictionary fetches, bulk segment/block downloads, and live WebSocket
+// upgrades. It is an override: when unset, the client builds its own gttp
+// clients tuned per workload — xrpc.ATProtoOpts for the short XRPC calls
+// (planSnapshot and getZstdDictionary) and xrpc.BulkDownloadOpts for streaming
+// segment/block downloads, whose large transfers a short wall-clock timeout
+// would prematurely kill. Supplying a client here replaces both tuned clients
+// with the single client given; WithAPIKey still scopes authentication to
+// archive requests and never mutates the supplied client.
+func WithHTTPClient(h *http.Client) Option {
+	return func(c *config) {
+		if h != nil {
+			c.httpClient = h
+		}
+	}
+}
+
+// WithMaxDownloadAttempts caps the total number of attempts (the initial
+// request plus retries) each XRPC/download request makes before failing.
+// n <= 0 is ignored (leaves the default retry policy). n == 1 disables
+// retries entirely.
+//
+// The default policy retries transient failures, which is right for
+// production resilience but undesirable for tests and tools that must fail
+// fast against a deliberately-broken or unavailable backend rather than
+// wait out a long backoff schedule. Bounding attempts turns a permanent
+// download failure into a prompt error instead of a slow retry loop.
+func WithMaxDownloadAttempts(n int) Option {
+	return func(c *config) {
+		if n > 0 {
+			c.maxDownloadAttempts = n
+		}
+	}
+}
+
+// WithLogger sets a structured logger for diagnostics. The default discards
+// all output.
+func WithLogger(l *slog.Logger) Option {
+	return func(c *config) {
+		if l != nil {
+			c.logger = l
+		}
+	}
+}
+
+// WithRawRecords makes archive commit decoding SKIP building the generic
+// Commit.Record map[string]any. Instead, Commit.Record is left nil and
+// Commit.RecordCBOR is populated directly from the segment payload, which the
+// caller decodes itself — typically through TypedEvents. Building the generic
+// map dominates archive decode CPU and allocations at scale (#142), so skipping
+// it is the main lever for high-volume replays of one record type. Live records
+// arrive as atproto JSON and are canonicalized to DAG-CBOR before delivery; the
+// live tail is low-volume relative to archive replay, so it does not need the
+// same zero-copy optimization.
+//
+// Deletes (no record), identity/account/sync events, and the default Commit
+// fields (Operation/Collection/Rkey/Rev) are unaffected. Commit.CID is left
+// empty in raw mode unless WithRawRecordCIDs is also set (computing it is real
+// per-record work this fast path avoids by default).
+//
+// Aliasing/lifetime contract: in raw mode Commit.RecordCBOR aliases the
+// client's internal decompressed buffer on the replay path (zero-copy), valid
+// only for the lifetime of the Batch that delivered it — the same contract the
+// default Record already carries. Anything decoded from it that retains slices
+// or strings (typed structs whose string fields alias the input) is likewise
+// valid only for the batch; copy it to retain longer. Use WithRawRecordsCopied
+// for a safe (cloned) variant that still skips the map build.
+func WithRawRecords() Option {
+	return func(c *config) { c.rawRecords = true }
+}
+
+// WithRawRecordsCopied is like WithRawRecords but Commit.RecordCBOR is a private
+// copy of the record bytes (not an alias of the internal buffer), so it — and
+// anything decoded from it — is safe to retain past the delivering Batch. It
+// still skips the generic map build; the only cost over WithRawRecords is one
+// allocation + copy of the raw bytes per commit. Use this when the consumer
+// keeps records around; use WithRawRecords for maximum throughput when records
+// are processed within the iteration.
+func WithRawRecordsCopied() Option {
+	return func(c *config) {
+		c.rawRecords = true
+		c.rawRecordsCopied = true
+	}
+}
+
+// WithRawRecordCIDs keeps computing Commit.CID (the record's content identifier,
+// a sha256 + base32 of the payload) when raw-record mode is enabled. Without it,
+// raw mode leaves Commit.CID empty to avoid the per-record hashing cost. No
+// effect unless WithRawRecords or WithRawRecordsCopied is also set.
+func WithRawRecordCIDs() Option {
+	return func(c *config) { c.rawRecordCIDs = true }
+}
+
+// WithZstdCompression controls live-tail dictionary-zstd compression, which is
+// enabled by default. The client fetches the server's current dictionary before
+// the first live dial, negotiates zstdDictionary=<id>, and transparently
+// decompresses binary frames. Fetch or rotation recovery failure degrades to an
+// uncompressed tail rather than failing the stream. Pass false to opt out;
+// archive segment compression is unaffected.
+func WithZstdCompression(enabled bool) Option {
+	return func(c *config) { c.zstdCompression = enabled }
+}

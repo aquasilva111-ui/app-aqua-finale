@@ -1,0 +1,186 @@
+import { mapDefined } from '@atproto/common'
+import type { AtUriString, Client } from '@atproto/lex'
+import type { Server } from '@atproto/xrpc-server'
+import type { AppContext } from '../../../../context.js'
+import {
+  type DataPlaneClient,
+  asInvalidRequest,
+} from '../../../../data-plane/index.js'
+import type { HydrateCtx, Hydrator } from '../../../../hydration/hydrator.js'
+import { parseString } from '../../../../hydration/util.js'
+import { app } from '../../../../lexicons/index.js'
+import {
+  type HydrationFnInput,
+  type PresentationFnInput,
+  type RulesFnInput,
+  type SkeletonFnInput,
+  createPipeline,
+} from '../../../../pipeline.js'
+import { uriToDid as creatorFromUri } from '../../../../util/uris.js'
+import type { Views } from '../../../../views/index.js'
+import { fillPage, resHeaders, resolveSearchV2Override } from '../../../util.js'
+
+export default function (server: Server, ctx: AppContext) {
+  const searchStarterPacks = createPipeline(
+    skeleton,
+    hydration,
+    noBlocks,
+    presentation,
+  )
+  server.add(app.bsky.graph.searchStarterPacks, {
+    auth: ctx.authVerifier.standardOptional,
+    handler: async ({ auth, params, req, signal }) => {
+      const { viewer, includeTakedowns, skipViewerBlocks } =
+        ctx.authVerifier.parseCreds(auth)
+      const labelers = ctx.reqLabelers(req)
+      const hydrateCtx = await ctx.hydrator.createContext({
+        viewer,
+        labelers,
+        includeTakedowns,
+        skipViewerBlocks,
+        features: ctx.featureGatesClient.scope(
+          ctx.featureGatesClient.parseUserContextFromHandler({
+            viewer,
+            req,
+          }),
+        ),
+      })
+      const results = await fillPage({
+        cursor: params.cursor,
+        limit: params.limit,
+        fetch: ({ cursor, limit }) =>
+          searchStarterPacks(
+            {
+              ...params,
+              cursor,
+              limit,
+              hydrateCtx,
+              signal,
+              isV2Override: resolveSearchV2Override(req, ctx.cfg),
+            },
+            ctx,
+          ),
+        items: (r) => r.starterPacks,
+      })
+      return {
+        encoding: 'application/json',
+        body: results,
+        headers: resHeaders({ labelers: hydrateCtx.labelers }),
+      }
+    },
+  })
+}
+
+const skeletonV1 = async (
+  inputs: SkeletonFnInput<Context, Params>,
+): Promise<Skeleton> => {
+  const { ctx, params } = inputs
+  const { q } = params
+
+  if (ctx.searchClient) {
+    // @NOTE cursors won't change on appview swap
+    const res = await ctx.searchClient.call(
+      app.bsky.unspecced.searchStarterPacksSkeleton,
+      {
+        q,
+        cursor: params.cursor,
+        limit: params.limit,
+        viewer: params.hydrateCtx.viewer ?? undefined,
+      },
+      { signal: params.signal },
+    )
+    return {
+      uris: res.starterPacks.map(({ uri }) => uri),
+      cursor: parseString(res.cursor),
+    }
+  }
+
+  const res = await ctx.dataplane.searchStarterPacks({
+    term: q,
+    limit: params.limit,
+    cursor: params.cursor,
+  })
+  return {
+    uris: res.uris as AtUriString[],
+    cursor: parseString(res.cursor),
+  }
+}
+
+const skeletonV2 = async (
+  inputs: SkeletonFnInput<Context, Params>,
+): Promise<Skeleton> => {
+  const { ctx, params } = inputs
+  const { q } = params
+
+  // Surface dataplane InvalidArgument errors as a 400 rather than a 500.
+  const res = await ctx.dataplane
+    .searchStarterPacksV2({
+      params: {
+        query: q,
+        viewer: params.hydrateCtx.viewer ?? undefined,
+        limit: params.limit,
+        cursor: params.cursor,
+      },
+    })
+    .catch(asInvalidRequest())
+  return {
+    uris: res.starterPacks.map(({ uri }) => uri as AtUriString),
+    cursor: parseString(res.pageInfo?.cursor),
+  }
+}
+
+const skeleton = async (input: SkeletonFnInput<Context, Params>) => {
+  const useV2 =
+    input.params.hydrateCtx.features.checkGate(
+      input.params.hydrateCtx.features.Gate.SearchV2Enable,
+    ) || input.params.isV2Override
+  const skeletonFn = useV2 ? skeletonV2 : skeletonV1
+  return skeletonFn(input)
+}
+
+const hydration = async (
+  inputs: HydrationFnInput<Context, Params, Skeleton>,
+) => {
+  const { ctx, params, skeleton } = inputs
+  return ctx.hydrator.hydrateStarterPacksBasic(skeleton.uris, params.hydrateCtx)
+}
+
+const noBlocks = (inputs: RulesFnInput<Context, Params, Skeleton>) => {
+  const { ctx, skeleton, hydration } = inputs
+  skeleton.uris = skeleton.uris.filter((uri) => {
+    const creator = creatorFromUri(uri)
+    return !ctx.views.viewerBlockExists(creator, hydration)
+  })
+  return skeleton
+}
+
+const presentation = (
+  inputs: PresentationFnInput<Context, Params, Skeleton>,
+) => {
+  const { ctx, skeleton, hydration } = inputs
+  const starterPacks = mapDefined(skeleton.uris, (uri) =>
+    ctx.views.starterPackBasic(uri, hydration),
+  )
+  return {
+    starterPacks: starterPacks,
+    cursor: skeleton.cursor,
+  }
+}
+
+type Context = {
+  dataplane: DataPlaneClient
+  hydrator: Hydrator
+  views: Views
+  searchClient?: Client
+}
+
+type Params = app.bsky.graph.searchStarterPacks.$Params & {
+  hydrateCtx: HydrateCtx
+  signal: AbortSignal
+  isV2Override: boolean
+}
+
+type Skeleton = {
+  uris: AtUriString[]
+  cursor?: string
+}

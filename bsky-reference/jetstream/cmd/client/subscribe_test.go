@@ -1,0 +1,409 @@
+package main
+
+import (
+	"bytes"
+	"context"
+	"encoding/json"
+	"fmt"
+	"io"
+	"net/http"
+	"net/http/httptest"
+	"os"
+	"path/filepath"
+	"strconv"
+	"strings"
+	"sync"
+	"sync/atomic"
+	"testing"
+	"time"
+
+	"github.com/bluesky-social/jetstream/segment"
+	"github.com/coder/websocket"
+	"github.com/jcalabro/atmos/cbor"
+)
+
+// syncBuffer is a concurrency-safe bytes.Buffer for capturing CLI output while
+// a goroutine polls it.
+type syncBuffer struct {
+	mu  sync.Mutex
+	buf bytes.Buffer
+}
+
+func (b *syncBuffer) Write(p []byte) (int, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.buf.Write(p)
+}
+
+func (b *syncBuffer) String() string {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.buf.String()
+}
+
+// liveServer serves a fixed set of live commit frames at the v2 NSID path.
+func liveServer(t *testing.T, frames []string) *httptest.Server {
+	t.Helper()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/xrpc/network.bsky.jetstream.subscribeEvents" {
+			http.Error(w, "not found", http.StatusNotFound)
+			return
+		}
+		conn, err := websocket.Accept(w, r, nil)
+		if err != nil {
+			return
+		}
+		defer func() { _ = conn.Close(websocket.StatusNormalClosure, "done") }()
+		for _, f := range frames {
+			if err := conn.Write(r.Context(), websocket.MessageText, []byte(f)); err != nil {
+				return
+			}
+		}
+		<-r.Context().Done()
+	}))
+	t.Cleanup(srv.Close)
+	return srv
+}
+
+func commitFrame(t *testing.T, seq uint64, did, coll, rkey string) string {
+	t.Helper()
+	s := strconv.FormatUint(seq, 10)
+	return `{"$type":"message","payload":{"$type":"network.bsky.jetstream.subscribeEvents#commit"` +
+		`,"seq":` + s + `,"did":"` + did + `","time":"1970-01-01T00:00:00.000001Z"` +
+		`,"rev":"r","operation":"create","collection":"` + coll +
+		`","rkey":"` + rkey + `","cid":"bafytest","record":{"$type":"` + coll + `","text":"hi ` + rkey + `"}}}`
+}
+
+// TestSubscribeFatalBackfillReturnsError is the E1/E2 regression guard: a
+// doomed backfill (here, the server rejects planSnapshot) must make the CLI
+// return a non-zero error in BOTH --print and throughput modes, rather than log
+// (or silently drop) the error and exit 0 — which would mask a failed backfill
+// from any orchestrator checking the exit status.
+func TestSubscribeFatalBackfillReturnsError(t *testing.T) {
+	t.Parallel()
+
+	// Server: planSnapshot fails, so the engine aborts the backfill fatally
+	// before any event is delivered.
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/xrpc/network.bsky.jetstream.planSnapshot":
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusInternalServerError)
+			_, _ = io.WriteString(w, `{"error":"InternalError","message":"boom"}`)
+		default:
+			http.Error(w, "not found", http.StatusNotFound)
+		}
+	}))
+	t.Cleanup(srv.Close)
+
+	for _, mode := range []string{"print", "throughput"} {
+		t.Run(mode, func(t *testing.T) {
+			t.Parallel()
+			app := newApp()
+			app.Writer = &syncBuffer{}
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+
+			args := []string{"jetstream-client", "--host", srv.URL, "--after-seq", "0"}
+			if mode == "print" {
+				args = append(args, "--print")
+			} else {
+				// throughput mode is the default (no --print).
+				args = append(args, "--report-interval", "100ms")
+			}
+			err := app.Run(ctx, args)
+			if err == nil {
+				t.Fatalf("%s mode: a fatal backfill failure must return a non-zero error, got nil", mode)
+			}
+			if !strings.Contains(err.Error(), "aborted") {
+				t.Fatalf("%s mode: expected an 'aborted' stream error, got: %v", mode, err)
+			}
+		})
+	}
+}
+
+// TestSubscribeRejectsNegativeCursors guards C2: a negative seq cursor must be
+// rejected with an error, not silently dropped (which would turn a requested
+// bounded backfill into an unbounded one with no signal).
+func TestSubscribeRejectsNegativeCursors(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		name string
+		flag string
+		val  string
+	}{
+		{name: "before-seq negative", flag: "--before-seq", val: "-5"},
+		{name: "live-cursor negative", flag: "--live-cursor", val: "-1"},
+		{name: "after-seq below sentinel", flag: "--after-seq", val: "-2"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			app := newApp()
+			app.Writer = &syncBuffer{}
+			ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+			defer cancel()
+			// localhost:1 never connects; the validation must trip before any I/O.
+			err := app.Run(ctx, []string{"jetstream-client", "--host", "localhost:1", tc.flag, tc.val})
+			if err == nil {
+				t.Fatalf("%s %s: expected a validation error, got nil", tc.flag, tc.val)
+			}
+			if !strings.Contains(err.Error(), tc.flag) {
+				t.Fatalf("%s %s: error should name the flag, got: %v", tc.flag, tc.val, err)
+			}
+		})
+	}
+}
+
+// TestSubscribePrintsEvents runs the real subscribe command (live-only) against
+// a fake server and asserts decoded events are printed as JSON.
+func TestSubscribePrintsEvents(t *testing.T) {
+	t.Parallel()
+	srv := liveServer(t, []string{
+		commitFrame(t, 1, "did:plc:a", "app.bsky.feed.post", "r1"),
+		commitFrame(t, 2, "did:plc:a", "app.bsky.feed.post", "r2"),
+	})
+
+	out := &syncBuffer{}
+	app := newApp()
+	app.Writer = out
+
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+
+	// Stop shortly after both events should have arrived.
+	go func() {
+		// Poll the output until two JSON lines appear, then cancel.
+		deadline := time.Now().Add(2 * time.Second)
+		for time.Now().Before(deadline) {
+			if strings.Count(out.String(), "\n") >= 2 {
+				break
+			}
+			time.Sleep(5 * time.Millisecond)
+		}
+		cancel()
+	}()
+
+	err := app.Run(ctx, []string{"jetstream-client", "--host", srv.URL, "--print"})
+	if err != nil {
+		t.Fatalf("run: %v", err)
+	}
+
+	lines := strings.Split(strings.TrimSpace(out.String()), "\n")
+	if len(lines) < 2 {
+		t.Fatalf("expected >=2 event lines, got %d:\n%s", len(lines), out.String())
+	}
+	var ev struct {
+		Cursor uint64 `json:"cursor"`
+		Kind   string `json:"kind"`
+		Commit struct {
+			Collection string `json:"collection"`
+			Rkey       string `json:"rkey"`
+		} `json:"commit"`
+	}
+	if err := json.Unmarshal([]byte(lines[0]), &ev); err != nil {
+		t.Fatalf("decode printed event: %v\nline: %s", err, lines[0])
+	}
+	if ev.Cursor != 1 || ev.Kind != "commit" || ev.Commit.Rkey != "r1" {
+		t.Fatalf("unexpected first event: %+v", ev)
+	}
+}
+
+func protectedBackfillServer(t *testing.T, apiKey string) (*httptest.Server, *atomic.Int64) {
+	t.Helper()
+	dir := t.TempDir()
+	name := "seg_0000000000.jss"
+	path := filepath.Join(dir, name)
+	writer, err := segment.New(segment.Config{Path: path, MaxEventsPerBlock: 2})
+	if err != nil {
+		t.Fatal(err)
+	}
+	payload, err := cbor.Marshal(map[string]any{"$type": "app.bsky.feed.post", "text": "from archive"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = writer.Append(segment.Event{
+		Seq: 1, WitnessedAt: 1_730_000_000_000_000, Kind: segment.KindCreate,
+		DID: "did:plc:cli", Collection: "app.bsky.feed.post", Rkey: "r1", Rev: "rev1", Payload: payload,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = writer.Seal(); err != nil {
+		t.Fatal(err)
+	}
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var requests atomic.Int64
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests.Add(1)
+		if got := r.Header.Values("Authorization"); len(got) != 1 || got[0] != "Bearer "+apiKey {
+			http.Error(w, "unauthorized", http.StatusUnauthorized)
+			return
+		}
+		switch r.URL.Path {
+		case "/xrpc/network.bsky.jetstream.planSnapshot":
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = fmt.Fprintf(w, `{"plannedThroughSeq":1,"sealedTipSeq":1,"segments":[{"name":%q,"index":0,"checksum":"deadbeefdeadbeef","minSeq":1,"maxSeq":1,"mode":"segment"}],"stats":{"segmentsExamined":1,"segmentsMatched":1,"blocksMatched":0,"entries":1}}`, name)
+		case "/xrpc/network.bsky.jetstream.getSegment":
+			w.Header().Set("Content-Type", "application/octet-stream")
+			w.Header().Set("ETag", `"cli-segment"`)
+			http.ServeContent(w, r, name, time.Unix(1_730_000_000, 0), bytes.NewReader(raw))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	t.Cleanup(srv.Close)
+	return srv, &requests
+}
+
+// Not parallel: the environment-source subtest mutates process state.
+//
+//nolint:paralleltest // JETSTREAM_CLIENT_API_KEY is process-global
+func TestSubscribeAPIKeySources(t *testing.T) {
+	const apiKey = "cli-opaque-key"
+	old, hadOld := os.LookupEnv("JETSTREAM_CLIENT_API_KEY")
+	t.Cleanup(func() {
+		if hadOld {
+			_ = os.Setenv("JETSTREAM_CLIENT_API_KEY", old)
+		} else {
+			_ = os.Unsetenv("JETSTREAM_CLIENT_API_KEY")
+		}
+	})
+
+	for _, tc := range []struct {
+		name   string
+		args   []string
+		useEnv bool
+	}{
+		{name: "flag", args: []string{"--api-key", apiKey}},
+		{name: "environment", useEnv: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if tc.useEnv {
+				if err := os.Setenv("JETSTREAM_CLIENT_API_KEY", apiKey); err != nil {
+					t.Fatal(err)
+				}
+				defer func() { _ = os.Unsetenv("JETSTREAM_CLIENT_API_KEY") }()
+			} else if err := os.Unsetenv("JETSTREAM_CLIENT_API_KEY"); err != nil {
+				t.Fatal(err)
+			}
+			srv, requests := protectedBackfillServer(t, apiKey)
+			out := &syncBuffer{}
+			app := newApp()
+			app.Writer = out
+			args := []string{"jetstream-client", "--host", srv.URL, "--after-seq", "0", "--backfill-only", "--segment-stripes", "1", "--print"}
+			args = append(args, tc.args...)
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			if err := app.Run(ctx, args); err != nil {
+				t.Fatalf("run: %v", err)
+			}
+			if requests.Load() < 2 {
+				t.Fatalf("expected protected plan and segment requests, got %d", requests.Load())
+			}
+			if !strings.Contains(out.String(), `"cursor":1`) {
+				t.Fatalf("expected archived event output, got %q", out.String())
+			}
+			if strings.Contains(out.String(), apiKey) {
+				t.Fatal("CLI output disclosed API key")
+			}
+		})
+	}
+}
+
+// Not parallel: the environment subtest mutates process state.
+//
+//nolint:paralleltest // JETSTREAM_CLIENT_API_KEY is process-global
+func TestSubscribeRejectsInvalidAPIKeyWithoutDisclosure(t *testing.T) {
+	old, hadOld := os.LookupEnv("JETSTREAM_CLIENT_API_KEY")
+	t.Cleanup(func() {
+		if hadOld {
+			_ = os.Setenv("JETSTREAM_CLIENT_API_KEY", old)
+		} else {
+			_ = os.Unsetenv("JETSTREAM_CLIENT_API_KEY")
+		}
+	})
+
+	for _, tc := range []struct {
+		name string
+		args []string
+		env  bool
+	}{
+		{name: "explicit empty flag", args: []string{"--api-key", ""}},
+		{name: "present empty environment", env: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if tc.env {
+				if err := os.Setenv("JETSTREAM_CLIENT_API_KEY", ""); err != nil {
+					t.Fatal(err)
+				}
+			} else if err := os.Unsetenv("JETSTREAM_CLIENT_API_KEY"); err != nil {
+				t.Fatal(err)
+			}
+			var requests atomic.Int64
+			srv := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) { requests.Add(1) }))
+			t.Cleanup(srv.Close)
+			out := &syncBuffer{}
+			app := newApp()
+			app.Writer = out
+			args := []string{"jetstream-client", "--host", srv.URL, "--after-seq", "0", "--backfill-only"}
+			args = append(args, tc.args...)
+			err := app.Run(context.Background(), args)
+			if err == nil || !strings.Contains(err.Error(), "API key cannot be empty") {
+				t.Fatalf("expected empty-key validation error, got %v", err)
+			}
+			if requests.Load() != 0 {
+				t.Fatalf("empty API key must fail before network I/O; requests=%d", requests.Load())
+			}
+			if strings.Contains(err.Error()+out.String(), "Bearer ") {
+				t.Fatal("validation output disclosed credential material")
+			}
+		})
+	}
+
+	t.Run("nonempty API key omitted from terminal error", func(t *testing.T) {
+		const apiKey = "distinctive-cli-error-secret"
+		if err := os.Unsetenv("JETSTREAM_CLIENT_API_KEY"); err != nil {
+			t.Fatal(err)
+		}
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if got := r.Header.Values("Authorization"); len(got) != 1 || got[0] != "Bearer "+apiKey {
+				http.Error(w, "unauthorized", http.StatusUnauthorized)
+				return
+			}
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusInternalServerError)
+			_, _ = io.WriteString(w, `{"error":"InternalError","message":"archive unavailable"}`)
+		}))
+		t.Cleanup(srv.Close)
+		out := &syncBuffer{}
+		app := newApp()
+		app.Writer = out
+		err := app.Run(context.Background(), []string{"jetstream-client", "--host", srv.URL, "--after-seq", "0", "--backfill-only", "--api-key", apiKey, "--print"})
+		if err == nil {
+			t.Fatal("expected terminal archive error")
+		}
+		if strings.Contains(err.Error()+out.String(), apiKey) {
+			t.Fatal("terminal error or output disclosed API key")
+		}
+	})
+}
+
+func TestSubscribeAPIKeyHelp(t *testing.T) {
+	t.Parallel()
+	out := &syncBuffer{}
+	app := newApp()
+	app.Writer = out
+	if err := app.Run(context.Background(), []string{"jetstream-client", "--help"}); err != nil {
+		t.Fatalf("help: %v", err)
+	}
+	help := out.String()
+	for _, want := range []string{"--api-key", "JETSTREAM_CLIENT_API_KEY", "Raw API key", "no Bearer prefix", "archive authentication", "process-visible", "Prefer JETSTREAM_CLIENT_API_KEY"} {
+		if !strings.Contains(help, want) {
+			t.Fatalf("help missing %q:\n%s", want, help)
+		}
+	}
+}

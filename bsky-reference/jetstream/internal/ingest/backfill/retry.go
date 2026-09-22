@@ -1,0 +1,595 @@
+package backfill
+
+import (
+	"bufio"
+	"context"
+	"errors"
+	"fmt"
+	"log/slog"
+	"math/rand/v2"
+	"net/http"
+	"strings"
+	"sync"
+	"time"
+
+	"github.com/bluesky-social/jetstream/internal/ingest"
+	"github.com/bluesky-social/jetstream/internal/store"
+	"github.com/cockroachdb/pebble"
+	"github.com/jcalabro/atmos"
+	atmosbackfill "github.com/jcalabro/atmos/backfill"
+	atmosrepo "github.com/jcalabro/atmos/repo"
+	atmossync "github.com/jcalabro/atmos/sync"
+	"github.com/jcalabro/atmos/xrpc"
+	"github.com/jcalabro/gt"
+	"golang.org/x/sync/errgroup"
+)
+
+const (
+	DefaultFailedRepoRetryInterval    = 4 * time.Hour
+	DefaultFailedRepoRetryWorkers     = 16
+	DefaultFailedRepoRetryHostWorkers = 4
+	DefaultFailedRepoRetryMaxDelay    = 7 * 24 * time.Hour
+
+	failedRepoRetryUnknownHost = "unknown"
+)
+
+type RetryConfig struct {
+	Store         *store.Store
+	Writer        *ingest.Writer
+	HTTPClient    *http.Client
+	RelayURL      string
+	Logger        *slog.Logger
+	Metrics       *Metrics
+	NewHostClient func(string) (*atmossync.Client, error)
+
+	// DropMetrics is the shared ingest validation-drop counter family,
+	// forwarded to the SegmentHandler. Optional.
+	DropMetrics *ingest.DropMetrics
+
+	// BackfillStore, when non-nil, is the shared *Store the runner uses for
+	// all metadata reads/writes instead of constructing its own over Store.
+	// Tests use this to inspect the same helper instance they seeded.
+	BackfillStore *Store
+
+	Interval    time.Duration
+	Workers     int
+	HostWorkers int
+	MaxDelay    time.Duration
+
+	// DownloadTimeout bounds one retry attempt's network phase (getRepo
+	// + CAR read). Zero → atmos backfill.DefaultDownloadTimeout (5m).
+	// Negative disables the bound, leaving only the transport's own
+	// guards (gttp's 30m wall-clock backstop). Without this, a giant or
+	// slow-serving repo occupies a host-limited retry slot for up to
+	// the transport backstop on every pass, forever — the retry runner
+	// bypasses atmos's backfill.Engine and so does not inherit its
+	// DownloadTimeout (observed with pds1.podping.at during the #299
+	// incident).
+	DownloadTimeout time.Duration
+
+	now            func() time.Time
+	jitter         jitterFunc
+	eligibleStatus func(Status) bool
+}
+
+type retryCandidate struct {
+	DID atmos.DID
+	// Host is the concurrency/parking attribution key. PDS is the validated
+	// direct-routing hostname; empty PDS deliberately falls back to RelayURL
+	// for rows written before discovery-time PDS stamping existed.
+	Host  string
+	PDS   string
+	Retry int
+}
+
+type retryRunner struct {
+	cfg        RetryConfig
+	syncClient *atmossync.Client
+	handler    *SegmentHandler
+	store      *Store
+
+	hostMu      sync.Mutex
+	hostLimit   map[string]chan struct{}
+	hostParked  map[string]time.Time
+	clientMu    sync.Mutex
+	hostClients map[string]*atmossync.Client
+}
+
+func RunFailedRepoRetry(ctx context.Context, cfg RetryConfig) error {
+	r, err := newRetryRunner(cfg)
+	if err != nil {
+		return err
+	}
+	if r.cfg.Interval == 0 {
+		<-ctx.Done()
+		return nil
+	}
+
+	timer := time.NewTimer(r.cfg.Interval)
+	defer timer.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return nil
+		case <-timer.C:
+			if err := r.runPass(ctx); err != nil {
+				if errors.Is(err, context.Canceled) && ctx.Err() != nil {
+					return nil
+				}
+				return err
+			}
+			timer.Reset(r.cfg.Interval)
+		}
+	}
+}
+
+// RunPendingRepoRetryPass performs one immediate retry scan for pending repos.
+// Merge uses this for bootstrap-recovery rows that must be materialized above
+// the captured live tail before serving ungates.
+func RunPendingRepoRetryPass(ctx context.Context, cfg RetryConfig) error {
+	cfg.eligibleStatus = func(st Status) bool { return st == StatusPending }
+	r, err := newRetryRunner(cfg)
+	if err != nil {
+		return err
+	}
+	return r.runPass(ctx)
+}
+
+func newRetryRunner(cfg RetryConfig) (*retryRunner, error) {
+	if cfg.Store == nil {
+		return nil, fmt.Errorf("backfill: retry: Store is required")
+	}
+	if cfg.Writer == nil {
+		return nil, fmt.Errorf("backfill: retry: Writer is required")
+	}
+	if cfg.HTTPClient == nil {
+		return nil, fmt.Errorf("backfill: retry: HTTPClient is required")
+	}
+	if cfg.RelayURL == "" {
+		return nil, fmt.Errorf("backfill: retry: RelayURL is required")
+	}
+	if cfg.Logger == nil {
+		return nil, fmt.Errorf("backfill: retry: Logger is required")
+	}
+	if cfg.Interval < 0 {
+		return nil, fmt.Errorf("backfill: retry: Interval must be >= 0")
+	}
+	if cfg.Workers <= 0 {
+		cfg.Workers = DefaultFailedRepoRetryWorkers
+	}
+	if cfg.HostWorkers <= 0 {
+		cfg.HostWorkers = DefaultFailedRepoRetryHostWorkers
+	}
+	if cfg.MaxDelay <= 0 {
+		cfg.MaxDelay = DefaultFailedRepoRetryMaxDelay
+	}
+	if cfg.DownloadTimeout == 0 {
+		cfg.DownloadTimeout = atmosbackfill.DefaultDownloadTimeout
+	}
+	if cfg.now == nil {
+		cfg.now = time.Now
+	}
+	if cfg.jitter == nil {
+		cfg.jitter = rand.Int64N
+	}
+	if cfg.NewHostClient == nil {
+		cfg.NewHostClient = NewHostClientBuilder(cfg.RelayURL, cfg.HTTPClient)
+	}
+
+	xc := &xrpc.Client{
+		Host:       cfg.RelayURL,
+		HTTPClient: gt.Some(cfg.HTTPClient),
+		Retry:      gt.Some(xrpc.RetryPolicy{MaxAttempts: gt.Some(1)}),
+	}
+	st := cfg.BackfillStore
+	if st == nil {
+		st = NewStore(cfg.Store, cfg.Metrics)
+	}
+	handler := NewSegmentHandler(cfg.Writer, cfg.Logger, cfg.Metrics)
+	handler.SetDropMetrics(cfg.DropMetrics)
+	return &retryRunner{
+		cfg:         cfg,
+		syncClient:  atmossync.NewClient(atmossync.Options{Client: xc}),
+		handler:     handler,
+		store:       st,
+		hostLimit:   make(map[string]chan struct{}),
+		hostParked:  make(map[string]time.Time),
+		hostClients: make(map[string]*atmossync.Client),
+	}, nil
+}
+
+func (r *retryRunner) runPass(ctx context.Context) error {
+	start := r.cfg.now()
+	r.cfg.Metrics.incRetryPasses()
+	r.cfg.Logger.InfoContext(ctx, "starting failed repo retry pass",
+		"workers", r.cfg.Workers,
+		"host_workers", r.cfg.HostWorkers,
+	)
+
+	jobs := make(chan retryCandidate, r.cfg.Workers*2)
+	g, gctx := errgroup.WithContext(ctx)
+	for range r.cfg.Workers {
+		g.Go(func() error {
+			for cand := range jobs {
+				if err := r.processCandidate(gctx, cand); err != nil {
+					return err
+				}
+			}
+			return nil
+		})
+	}
+
+	scanErr := r.scanDue(gctx, r.cfg.now(), func(cand retryCandidate) error {
+		r.cfg.Metrics.incRetryCandidates()
+		if until, ok := r.hostParkedUntil(cand.Host, r.cfg.now()); ok {
+			r.cfg.Metrics.incRetrySkippedHostParked()
+			return r.store.DeferRetryAttempt(gctx, cand.DID, until)
+		}
+		select {
+		case <-gctx.Done():
+			return gctx.Err()
+		case jobs <- cand:
+			return nil
+		}
+	})
+	close(jobs)
+	if scanErr != nil {
+		if waitErr := g.Wait(); waitErr != nil {
+			return waitErr
+		}
+		return scanErr
+	}
+	if err := g.Wait(); err != nil {
+		return err
+	}
+	r.cfg.Logger.InfoContext(ctx, "failed repo retry pass complete", "duration", r.cfg.now().Sub(start))
+	return nil
+}
+
+func (r *retryRunner) scanDue(ctx context.Context, now time.Time, yield func(retryCandidate) error) error {
+	prefix := []byte(repoKeyPrefix)
+	it, err := r.cfg.Store.NewIter(&pebble.IterOptions{
+		LowerBound: prefix,
+		UpperBound: store.PrefixUpperBound(prefix),
+	})
+	if err != nil {
+		return fmt.Errorf("backfill: retry: open repo iter: %w", err)
+	}
+	defer func() { _ = it.Close() }()
+
+	for it.First(); it.Valid(); it.Next() {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		val, err := it.ValueAndErr()
+		if err != nil {
+			return fmt.Errorf("backfill: retry: read repo value: %w", err)
+		}
+		rs, err := decodeRepoStatus(val)
+		if err != nil {
+			return err
+		}
+		eligibleStatus := r.cfg.eligibleStatus
+		if eligibleStatus == nil {
+			eligibleStatus = isRetryEligibleStatus
+		}
+		if !eligibleStatus(rs.Backfill.Status) || !rs.Active {
+			continue
+		}
+		if !rs.Backfill.NextAttemptAt.IsZero() && rs.Backfill.NextAttemptAt.After(now) {
+			continue
+		}
+		did, err := atmos.ParseDID(strings.TrimPrefix(string(it.Key()), repoKeyPrefix))
+		if err != nil {
+			return fmt.Errorf("backfill: retry: invalid repo key %q: %w", string(it.Key()), err)
+		}
+		// Routing uses PDS; parking/concurrency attribution prefers rs.Host,
+		// which a fallback failure updates to the actually-responding host
+		// (for direct rows they are the same bucket, so this is a no-op).
+		pds := rs.PDS
+		host := rs.Host
+		if host == "" {
+			host = pds
+		}
+		if host == "" {
+			host = failedRepoRetryUnknownHost
+		}
+		if err := yield(retryCandidate{DID: did, Host: host, PDS: pds, Retry: rs.Backfill.RetryCount}); err != nil {
+			return err
+		}
+	}
+	if err := it.Error(); err != nil {
+		return fmt.Errorf("backfill: retry: iter repo: %w", err)
+	}
+	return nil
+}
+
+func (r *retryRunner) processCandidate(ctx context.Context, cand retryCandidate) error {
+	if until, ok := r.hostParkedUntil(cand.Host, r.cfg.now()); ok {
+		r.cfg.Metrics.incRetrySkippedHostParked()
+		return r.store.DeferRetryAttempt(ctx, cand.DID, until)
+	}
+	release, err := r.acquireHost(ctx, cand.Host)
+	if err != nil {
+		return err
+	}
+	defer release()
+	if until, ok := r.hostParkedUntil(cand.Host, r.cfg.now()); ok {
+		r.cfg.Metrics.incRetrySkippedHostParked()
+		return r.store.DeferRetryAttempt(ctx, cand.DID, until)
+	}
+
+	r.cfg.Metrics.incRetryAttempts()
+	host, viaFallback, err := r.tryRepo(ctx, cand)
+	if err == nil {
+		r.cfg.Metrics.incRetrySucceeded()
+		return nil
+	}
+	if ctx.Err() != nil {
+		return ctx.Err()
+	}
+	if isLocalRetryError(err) {
+		return err
+	}
+
+	next := r.nextAttemptAt(err, cand.Retry)
+	// Direct attempts park/record under the roster hostname — that is the
+	// key candidates are scanned and parked by, so parking anything else
+	// would not suppress same-host work. A failure after a relay fallback,
+	// though, came from a different host than the (stale) stamp: attribute
+	// it to the responding host so the genuinely rate-limited PDS parks
+	// instead of the stamp.
+	failHost := cand.PDS
+	if failHost == "" || viaFallback {
+		failHost = retryFailureHost(cand.Host, host)
+	}
+	if xrpc.IsRateLimited(err) {
+		r.parkHost(failHost, next)
+		// cand.Host is the key candidates were scanned and gated under; when
+		// it differs from the failure bucket (stale stamp vs responding host,
+		// in either direction), park it too so queued same-set candidates
+		// defer instead of continuing into the rate-limited upstream.
+		if cand.Host != "" && cand.Host != failHost {
+			r.parkHost(cand.Host, next)
+		}
+	}
+	if storeErr := r.store.RecordRetryFailure(ctx, cand.DID, failHost, err, next); storeErr != nil {
+		return storeErr
+	}
+	r.cfg.Logger.WarnContext(ctx, "failed repo retry attempt failed",
+		"did", string(cand.DID),
+		"host", failHost,
+		"next_attempt_at", next,
+		"err", err,
+	)
+	return nil
+}
+
+func (r *retryRunner) tryRepo(ctx context.Context, cand retryCandidate) (string, bool, error) {
+	rp, commit, host, viaFallback, err := r.download(ctx, cand)
+	if err != nil {
+		return host, viaFallback, err
+	}
+	if err := r.handler.HandleRepoResync(ctx, cand.DID, rp, commit); err != nil {
+		return host, viaFallback, err
+	}
+	if err := r.cfg.Writer.DrainDurability(ctx); err != nil {
+		return host, viaFallback, fmt.Errorf("backfill: retry: drain durable repo rows: %w", err)
+	}
+	completionHost := cand.PDS
+	if completionHost == "" || viaFallback {
+		// Fallback success means the recorded PDS was stale (migration):
+		// attribute completion to the host that actually served the CAR.
+		completionHost = host
+	}
+	if viaFallback && completionHost != "" && completionHost != cand.PDS {
+		// Repair the routing stamp so future passes go direct to the host
+		// that actually serves this repo instead of re-walking the fallback.
+		if bucket, ok := hostBucketFromAuthority(completionHost); ok {
+			// "complete repo" keeps this inside isLocalRetryError: a local
+			// metadata-write failure after durable ingestion must abort the
+			// pass, not be recorded as an upstream failure and re-ingested.
+			if err := r.store.updateRepoHostActive(cand.DID, bucket, true); err != nil {
+				return host, viaFallback, fmt.Errorf("backfill: retry: complete repo: restamp PDS: %w", err)
+			}
+		}
+	}
+	if err := r.store.OnComplete(ctx, cand.DID, completionHost, commit); err != nil {
+		return host, viaFallback, fmt.Errorf("backfill: retry: complete repo: %w", err)
+	}
+	return host, viaFallback, nil
+}
+
+// download fetches and parses one repo under the per-attempt
+// DownloadTimeout. Only the network phase (getRepo + CAR read) runs
+// under the deadline; the caller's handler/durability work runs under
+// the parent ctx — it must not be killed by a network budget.
+//
+// A timeout that is ours (parent ctx still healthy) surfaces as the
+// deadline error wrapped in a distinguishing message; processCandidate
+// records it as an ordinary retry failure with backoff, same as any
+// transport error. Mirrors atmos backfill.Engine.download, which the
+// retry runner bypasses.
+func (r *retryRunner) download(ctx context.Context, cand retryCandidate) (*atmosrepo.Repo, *atmosrepo.Commit, string, bool, error) {
+	dlCtx := ctx
+	if r.cfg.DownloadTimeout > 0 {
+		var cancel context.CancelFunc
+		dlCtx, cancel = context.WithTimeout(ctx, r.cfg.DownloadTimeout)
+		defer cancel()
+	}
+
+	viaFallback := cand.PDS == ""
+	client, err := r.clientForHost(cand.PDS)
+	if err != nil {
+		// An unroutable stamp (validation failure, builder error) must not
+		// permanently strand the DID: fall back to the relay's 302, which
+		// tracks the current PDS.
+		viaFallback = true
+		client = r.syncClient
+	}
+	body, host, err := client.GetRepoStreamHost(dlCtx, cand.DID, "")
+	if err != nil && !viaFallback && isRepoNotFoundError(err) {
+		// The stamped PDS authoritatively lacks the repo — a stale stamp
+		// from a pre-migration discovery. The relay redirect tracks the
+		// account's current PDS; on success tryRepo re-stamps. Without
+		// this, RecordRetryFailure would treat the direct RepoNotFound as
+		// terminal and mark an undownloaded migrated repo complete.
+		viaFallback = true
+		body, host, err = r.syncClient.GetRepoStreamHost(dlCtx, cand.DID, "")
+	}
+	if err != nil {
+		return nil, nil, host, viaFallback, r.classifyDownloadErr(dlCtx, ctx, err)
+	}
+	defer func() { _ = body.Close() }()
+
+	// LoadCompleteFromCAR (not LoadFromCAR) verifies the downloaded full repo
+	// is structurally complete. A getRepo CAR truncated exactly on a block
+	// boundary parses cleanly but omits referenced blocks; LoadCompleteFromCAR
+	// surfaces that as a transient (io.ErrUnexpectedEOF) error so this retry
+	// pass re-defers the DID rather than completing it on a partial repo.
+	rp, commit, err := atmosrepo.LoadCompleteFromCAR(bufio.NewReader(body))
+	if err != nil {
+		return nil, nil, host, viaFallback, r.classifyDownloadErr(dlCtx, ctx, err)
+	}
+	// The retry path routes directly to untrusted PDSes and bypasses the
+	// atmos engine (which performs this same check): a CAR whose commit
+	// identifies a different DID must not be resynced under cand.DID.
+	if rp.DID != cand.DID {
+		return nil, nil, host, viaFallback, fmt.Errorf("backfill: retry: getRepo DID mismatch: requested %s, CAR commit is %s", cand.DID, rp.DID)
+	}
+	return rp, commit, host, viaFallback, nil
+}
+
+func (r *retryRunner) clientForHost(host string) (*atmossync.Client, error) {
+	if host == "" || host == failedRepoRetryUnknownHost {
+		return r.syncClient, nil
+	}
+	r.clientMu.Lock()
+	defer r.clientMu.Unlock()
+	if client := r.hostClients[host]; client != nil {
+		return client, nil
+	}
+	client, err := r.cfg.NewHostClient(host)
+	if err != nil {
+		return nil, fmt.Errorf("backfill: retry: build PDS client %s: %w", host, err)
+	}
+	if client == nil {
+		return nil, fmt.Errorf("backfill: retry: build PDS client %s: returned nil client", host)
+	}
+	r.hostClients[host] = client
+	return client, nil
+}
+
+// classifyDownloadErr annotates a download failure caused by OUR
+// per-attempt budget (dlCtx expired, parent ctx healthy) so the log
+// line and stored LastError identify the slow download rather than a
+// generic "context deadline exceeded". Other errors pass through.
+func (r *retryRunner) classifyDownloadErr(dlCtx, parent context.Context, err error) error {
+	if dlCtx.Err() != nil && parent.Err() == nil {
+		return fmt.Errorf("backfill: retry: repo download exceeded DownloadTimeout (%s): %w",
+			r.cfg.DownloadTimeout, err)
+	}
+	return err
+}
+
+func (r *retryRunner) acquireHost(ctx context.Context, host string) (func(), error) {
+	r.hostMu.Lock()
+	ch := r.hostLimit[host]
+	if ch == nil {
+		ch = make(chan struct{}, r.cfg.HostWorkers)
+		r.hostLimit[host] = ch
+	}
+	r.hostMu.Unlock()
+
+	select {
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	case ch <- struct{}{}:
+		return func() { <-ch }, nil
+	}
+}
+
+func (r *retryRunner) isHostParked(host string, now time.Time) bool {
+	_, ok := r.hostParkedUntil(host, now)
+	return ok
+}
+
+func (r *retryRunner) hostParkedUntil(host string, now time.Time) (time.Time, bool) {
+	r.hostMu.Lock()
+	defer r.hostMu.Unlock()
+	until, ok := r.hostParked[host]
+	if !ok {
+		return time.Time{}, false
+	}
+	if now.Before(until) {
+		return until, true
+	}
+	delete(r.hostParked, host)
+	return time.Time{}, false
+}
+
+func (r *retryRunner) parkHost(host string, until time.Time) {
+	r.hostMu.Lock()
+	defer r.hostMu.Unlock()
+	if old, ok := r.hostParked[host]; ok && old.After(until) {
+		return
+	}
+	r.hostParked[host] = until
+}
+
+func (r *retryRunner) nextAttemptAt(err error, retryCount int) time.Time {
+	now := r.cfg.now().UTC()
+	if xrpc.IsRateLimited(err) {
+		if ra := xrpc.RetryAfter(err); !ra.IsZero() && ra.After(now) {
+			// Clamp a server-directed reset to MaxDelay. parkHost suppresses
+			// every repo on this host until this instant, so a buggy or
+			// hostile upstream sending a far-future RateLimit-Reset must not
+			// be able to park a host past the configured ceiling. Mirrors the
+			// bootstrap path's clamp in selectedRateLimitDelay.
+			max := now.Add(r.cfg.MaxDelay)
+			if ra.After(max) {
+				return max
+			}
+			return ra.UTC()
+		}
+	}
+	return now.Add(selectedBackoffDelay(r.cfg.Interval, r.cfg.MaxDelay, retryCount, r.cfg.jitter)).UTC()
+}
+
+func retryFailureHost(candidateHost, responseHost string) string {
+	if host, ok := hostBucketFromAuthority(responseHost); ok {
+		return host
+	}
+	if candidateHost != "" {
+		return candidateHost
+	}
+	return failedRepoRetryUnknownHost
+}
+
+// isRetryEligibleStatus reports whether a repo row should be picked up by a
+// steady-state retry pass. Only failed rows are eligible: they represent repos
+// that were discovered by listRepos but failed their original download. A live
+// first-sighting is not enough evidence to issue getRepo; that recovery belongs
+// to an explicit #sync from the PDS operator.
+func isRetryEligibleStatus(st Status) bool {
+	return st == StatusFailed
+}
+
+// isRetryFailureRecordableStatus reports whether a retry attempt that was
+// already selected may record transient failure/backoff. StatusPending is
+// included for the explicit post-merge pending pass; the steady-state scanner
+// still excludes pending rows via isRetryEligibleStatus.
+func isRetryFailureRecordableStatus(st Status) bool {
+	return st == StatusFailed || st == StatusPending
+}
+
+func isLocalRetryError(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := err.Error()
+	return strings.Contains(msg, "ingest:") ||
+		strings.Contains(msg, "append batch") ||
+		strings.Contains(msg, "drain durable repo rows") ||
+		strings.Contains(msg, "complete repo")
+}

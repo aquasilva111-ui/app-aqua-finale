@@ -1,0 +1,505 @@
+import assert from 'node:assert'
+import {
+  ComAtprotoAdminDefs,
+  ComAtprotoModerationDefs,
+  ComAtprotoRepoStrongRef,
+  ToolsOzoneModerationDefs,
+} from '@atproto/api'
+import type { ToolsOzoneModerationQueryStatuses } from '@atproto/api'
+import {
+  type ModeratorClient,
+  type SeedClient,
+  TestNetwork,
+  basicSeed,
+} from '@atproto/dev-env'
+import { forSnapshot } from './_util.js'
+
+describe('moderation-statuses', () => {
+  let network: TestNetwork
+  let sc: SeedClient
+  let modClient: ModeratorClient
+
+  const seedEvents = async () => {
+    const bobsAccount = {
+      $type: 'com.atproto.admin.defs#repoRef',
+      did: sc.dids.bob,
+    }
+    const carlasAccount = {
+      $type: 'com.atproto.admin.defs#repoRef',
+      did: sc.dids.alice,
+    }
+    const bobsPost = {
+      $type: 'com.atproto.repo.strongRef',
+      uri: sc.posts[sc.dids.bob][0].ref.uriStr,
+      cid: sc.posts[sc.dids.bob][0].ref.cidStr,
+    }
+    const alicesPost = {
+      $type: 'com.atproto.repo.strongRef',
+      uri: sc.posts[sc.dids.alice][1].ref.uriStr,
+      cid: sc.posts[sc.dids.alice][1].ref.cidStr,
+    }
+
+    for (let i = 0; i < 4; i++) {
+      await sc.createReport({
+        reasonType:
+          i % 2
+            ? ComAtprotoModerationDefs.REASONSPAM
+            : ComAtprotoModerationDefs.REASONMISLEADING,
+        reason: 'X',
+        //   Report bob's account by alice and vice versa
+        subject: i % 2 ? bobsAccount : carlasAccount,
+        reportedBy: i % 2 ? sc.dids.alice : sc.dids.bob,
+      })
+      await sc.createReport({
+        reasonType: ComAtprotoModerationDefs.REASONSPAM,
+        reason: 'X',
+        //   Report bob's post by alice and vice versa
+        subject: i % 2 ? bobsPost : alicesPost,
+        reportedBy: i % 2 ? sc.dids.alice : sc.dids.bob,
+      })
+    }
+  }
+
+  beforeAll(async () => {
+    network = await TestNetwork.create({
+      dbPostgresSchema: 'ozone_moderation_statuses',
+    })
+    sc = network.getSeedClient()
+    modClient = network.ozone.getModClient()
+    await basicSeed(sc)
+    await network.processAll()
+    await seedEvents()
+  })
+
+  beforeEach(async () => {
+    await network.processAll()
+  })
+
+  afterAll(async () => {
+    await network?.close()
+  })
+
+  describe('query statuses', () => {
+    it('returns statuses for subjects that received moderation events', async () => {
+      const response = await modClient.queryStatuses({})
+
+      expect(forSnapshot(response.subjectStatuses)).toMatchSnapshot()
+    })
+
+    it('returns statuses filtered by subject language', async () => {
+      const klingonQueue = await modClient.queryStatuses({
+        tags: ['lang:i'],
+      })
+
+      expect(forSnapshot(klingonQueue.subjectStatuses)).toMatchSnapshot()
+
+      const nonKlingonQueue = await modClient.queryStatuses({
+        excludeTags: ['lang:i'],
+      })
+
+      // Verify that the klingon tagged subject is not returned when excluding klingon
+      expect(nonKlingonQueue.subjectStatuses.map((s) => s.id)).not.toContain(
+        klingonQueue.subjectStatuses[0].id,
+      )
+
+      // Verify multi lang tag exclusion
+      Promise.all(
+        nonKlingonQueue.subjectStatuses.map((s, i) => {
+          return modClient.emitEvent({
+            subject: s.subject,
+            event: {
+              $type: 'tools.ozone.moderation.defs#modEventTag',
+              add: [i % 2 ? 'lang:jp' : 'lang:it'],
+              remove: [],
+              comment: 'Adding custom lang tag',
+            },
+            createdBy: sc.dids.alice,
+          })
+        }),
+      )
+
+      const queueWithoutKlingonAndItalian = await modClient.queryStatuses({
+        excludeTags: ['lang:i', 'lang:it'],
+      })
+
+      queueWithoutKlingonAndItalian.subjectStatuses
+        .map((s) => s.tags)
+        .flat()
+        .forEach((tag) => {
+          expect(['lang:it', 'lang:i']).not.toContain(tag)
+        })
+    })
+
+    it('returns paginated statuses', async () => {
+      // We know there will be exactly 4 statuses in db
+      const getPaginatedStatuses = async (
+        params: ToolsOzoneModerationQueryStatuses.QueryParams,
+      ) => {
+        let cursor: string | undefined = ''
+        const statuses: ToolsOzoneModerationDefs.SubjectStatusView[] = []
+        let count = 0
+        do {
+          const results = await modClient.queryStatuses({
+            limit: 1,
+            cursor,
+            ...params,
+          })
+          cursor = results.cursor
+          statuses.push(...results.subjectStatuses)
+          count++
+          // The count is just a brake-check to prevent infinite loop
+        } while (cursor && count < 10)
+
+        return statuses
+      }
+
+      const list = await getPaginatedStatuses({})
+      expect(list[0].id).toEqual(7)
+      expect(list[list.length - 1].id).toEqual(1)
+
+      await modClient.emitEvent({
+        subject: list[1].subject,
+        event: {
+          $type: 'tools.ozone.moderation.defs#modEventAcknowledge',
+          comment: 'X',
+        },
+      })
+
+      const listReviewedFirst = await getPaginatedStatuses({
+        sortDirection: 'desc',
+        sortField: 'lastReviewedAt',
+      })
+
+      // Verify that the item that was recently reviewed comes up first when sorted descendingly
+      // while the result set always contains same number of items regardless of sorting
+      expect(listReviewedFirst[0].id).toEqual(list[1].id)
+      expect(listReviewedFirst.length).toEqual(list.length)
+    })
+
+    it('returns statuses for specified collections', async () => {
+      const sp = await sc.createStarterPack(
+        sc.dids.alice,
+        "alice's about to get blocked starter pack",
+        [sc.dids.bob, sc.dids.carol],
+        [],
+      )
+      await sc.createReport({
+        reasonType: ComAtprotoModerationDefs.REASONSPAM,
+        reason: 'X',
+        subject: {
+          $type: 'com.atproto.repo.strongRef',
+          ...sp.raw,
+        },
+        reportedBy: sc.dids.bob,
+      })
+
+      const [
+        onlyStarterPackStatuses,
+        onlyAlicesStarterPackStatuses,
+        onlyBobsStarterPackStatuses,
+        onlyPostStatuses,
+      ] = await Promise.all([
+        modClient.queryStatuses({
+          collections: ['app.bsky.graph.starterpack'],
+        }),
+        modClient.queryStatuses({
+          subject: sc.dids.alice,
+          includeAllUserRecords: true,
+          collections: ['app.bsky.graph.starterpack'],
+        }),
+        modClient.queryStatuses({
+          subject: sc.dids.bob,
+          includeAllUserRecords: true,
+          collections: ['app.bsky.graph.starterpack'],
+        }),
+        modClient.queryStatuses({
+          collections: ['app.bsky.feed.post'],
+        }),
+      ])
+
+      expect(onlyStarterPackStatuses.subjectStatuses.length).toEqual(1)
+      assert(
+        ComAtprotoRepoStrongRef.isMain(
+          onlyStarterPackStatuses.subjectStatuses[0].subject,
+        ),
+      )
+      expect(onlyStarterPackStatuses.subjectStatuses[0].subject.uri).toContain(
+        'app.bsky.graph.starterpack',
+      )
+      expect(onlyAlicesStarterPackStatuses.subjectStatuses.length).toEqual(1)
+      assert(
+        ComAtprotoRepoStrongRef.isMain(
+          onlyAlicesStarterPackStatuses.subjectStatuses[0].subject,
+        ),
+      )
+      expect(
+        onlyAlicesStarterPackStatuses.subjectStatuses[0].subject.uri,
+      ).toEqual(sp.uriStr)
+      expect(onlyBobsStarterPackStatuses.subjectStatuses.length).toEqual(0)
+      expect(onlyPostStatuses.subjectStatuses.length).toEqual(2)
+    })
+
+    it('returns statuses for account or records', async () => {
+      const [
+        onlyAccountStatuses,
+        onlyRecordStatuses,
+        onlyStatusesOnBobsAccount,
+      ] = await Promise.all([
+        modClient.queryStatuses({
+          subjectType: 'account',
+        }),
+        modClient.queryStatuses({
+          subjectType: 'record',
+        }),
+        modClient.queryStatuses({
+          subject: sc.dids.bob,
+          subjectType: 'record',
+        }),
+      ])
+
+      assert(
+        onlyAccountStatuses.subjectStatuses.every(
+          (e) => !ComAtprotoRepoStrongRef.isMain(e.subject),
+        ),
+        'only account statuses are returned, no event has a uri',
+      )
+
+      assert(
+        onlyRecordStatuses.subjectStatuses.every(
+          (e) => ComAtprotoRepoStrongRef.isMain(e.subject) && e.subject.uri,
+        ),
+        'only record statuses are returned, all events have a uri',
+      )
+
+      assert(
+        onlyStatusesOnBobsAccount.subjectStatuses.every(
+          (e) =>
+            ComAtprotoAdminDefs.isRepoRef(e.subject) &&
+            e.subject.did === sc.dids.bob,
+        ),
+        "only bob's account statuses are returned, no events have a URI even though the subjectType is record",
+      )
+    })
+
+    it('returns statuses for conversations', async () => {
+      const convoId1 = 'test-convo-123'
+      const convoId2 = 'test-convo-456'
+
+      // Create reports for conversation 1
+      await sc.createReport({
+        reasonType: ComAtprotoModerationDefs.REASONSPAM,
+        reason: 'spam in convo 1',
+        subject: {
+          $type: 'chat.bsky.convo.defs#convoRef',
+          did: sc.dids.carol,
+          convoId: convoId1,
+        },
+        reportedBy: sc.dids.alice,
+      })
+
+      // Create another report for conversation 1
+      await sc.createReport({
+        reasonType: ComAtprotoModerationDefs.REASONMISLEADING,
+        reason: 'misleading in convo 1',
+        subject: {
+          $type: 'chat.bsky.convo.defs#convoRef',
+          did: sc.dids.carol,
+          convoId: convoId1,
+        },
+        reportedBy: sc.dids.bob,
+      })
+
+      // Create report for conversation 2
+      await sc.createReport({
+        reasonType: ComAtprotoModerationDefs.REASONSPAM,
+        reason: 'spam in convo 2',
+        subject: {
+          $type: 'chat.bsky.convo.defs#convoRef',
+          did: sc.dids.carol,
+          convoId: convoId2,
+        },
+        reportedBy: sc.dids.alice,
+      })
+
+      // Query statuses for conversation 1 using AT URI format
+      const convo1Statuses = await modClient.queryStatuses({
+        subject: `at://${sc.dids.carol}/chat.bsky.convo/${convoId1}`,
+      })
+
+      // Query statuses for conversation 2
+      const convo2Statuses = await modClient.queryStatuses({
+        subject: `at://${sc.dids.carol}/chat.bsky.convo/${convoId2}`,
+      })
+
+      // Query all conversation statuses for carol
+      const allCarolConvoStatuses = await modClient.queryStatuses({
+        subject: sc.dids.carol,
+        includeAllUserRecords: true,
+      })
+
+      // Verify conversation 1 has exactly 1 status (multiple reports create one status)
+      expect(convo1Statuses.subjectStatuses.length).toEqual(1)
+      expect(convo1Statuses.subjectStatuses[0].subject.$type).toEqual(
+        'chat.bsky.convo.defs#convoRef',
+      )
+      expect(convo1Statuses.subjectStatuses[0].reviewState).toEqual(
+        ToolsOzoneModerationDefs.REVIEWOPEN,
+      )
+
+      // Verify conversation 2 has exactly 1 status
+      expect(convo2Statuses.subjectStatuses.length).toEqual(1)
+      expect(convo2Statuses.subjectStatuses[0].subject.$type).toEqual(
+        'chat.bsky.convo.defs#convoRef',
+      )
+
+      // Verify statuses are properly isolated by conversation
+      const convo1Subject = convo1Statuses.subjectStatuses[0].subject as any
+      const convo2Subject = convo2Statuses.subjectStatuses[0].subject as any
+      expect(convo1Subject.convoId).toEqual(convoId1)
+      expect(convo2Subject.convoId).toEqual(convoId2)
+
+      // Verify includeAllUserRecords includes conversations
+      const convoStatuses = allCarolConvoStatuses.subjectStatuses.filter(
+        (s) => s.subject.$type === 'chat.bsky.convo.defs#convoRef',
+      )
+      expect(convoStatuses.length).toBeGreaterThanOrEqual(2)
+    })
+  })
+
+  describe('reviewState changes', () => {
+    it('only sets state to #reviewNone on first non-impactful event', async () => {
+      const bobsAccount = {
+        $type: 'com.atproto.admin.defs#repoRef',
+        did: sc.dids.bob,
+      }
+      const alicesPost = {
+        $type: 'com.atproto.repo.strongRef',
+        uri: sc.posts[sc.dids.alice][0].ref.uriStr,
+        cid: sc.posts[sc.dids.alice][0].ref.cidStr,
+      }
+      const getBobsAccountStatus = async () => {
+        const data = await modClient.queryStatuses({
+          subject: bobsAccount.did,
+        })
+
+        return data.subjectStatuses[0]
+      }
+      // Since bob's account already had a reviewState, it won't be changed by non-impactful events
+      const bobsAccountStatusBeforeTag = await getBobsAccountStatus()
+
+      await Promise.all([
+        modClient.emitEvent({
+          subject: bobsAccount,
+          event: {
+            $type: 'tools.ozone.moderation.defs#modEventTag',
+            add: ['newTag'],
+            remove: [],
+            comment: 'X',
+          },
+          createdBy: sc.dids.alice,
+        }),
+        modClient.emitEvent({
+          subject: bobsAccount,
+          event: {
+            $type: 'tools.ozone.moderation.defs#modEventComment',
+            comment: 'X',
+          },
+          createdBy: sc.dids.alice,
+        }),
+      ])
+      const bobsAccountStatusAfterTag = await getBobsAccountStatus()
+
+      expect(bobsAccountStatusBeforeTag.reviewState).toEqual(
+        bobsAccountStatusAfterTag.reviewState,
+      )
+
+      // Since alice's post didn't have a reviewState it is set to reviewNone on first non-impactful event
+      const getAlicesPostStatus = async () => {
+        const data = await modClient.queryStatuses({
+          subject: alicesPost.uri,
+        })
+
+        return data.subjectStatuses[0]
+      }
+
+      const alicesPostStatusBeforeTag = await getAlicesPostStatus()
+      expect(alicesPostStatusBeforeTag).toBeUndefined()
+
+      await modClient.emitEvent({
+        subject: alicesPost,
+        event: {
+          $type: 'tools.ozone.moderation.defs#modEventComment',
+          comment: 'X',
+        },
+        createdBy: sc.dids.alice,
+      })
+      const alicesPostStatusAfterTag = await getAlicesPostStatus()
+      expect(alicesPostStatusAfterTag.reviewState).toEqual(
+        ToolsOzoneModerationDefs.REVIEWNONE,
+      )
+
+      await modClient.emitEvent({
+        subject: alicesPost,
+        event: {
+          $type: 'tools.ozone.moderation.defs#modEventReport',
+          reportType: ComAtprotoModerationDefs.REASONMISLEADING,
+          comment: 'X',
+        },
+        createdBy: sc.dids.alice,
+      })
+      const alicesPostStatusAfterReport = await getAlicesPostStatus()
+      expect(alicesPostStatusAfterReport.reviewState).toEqual(
+        ToolsOzoneModerationDefs.REVIEWOPEN,
+      )
+    })
+  })
+
+  describe('blobs', () => {
+    it('are tracked on takendown subject', async () => {
+      const post = sc.posts[sc.dids.carol][0]
+      assert(post.images.length > 1)
+      await modClient.emitEvent({
+        event: {
+          $type: 'tools.ozone.moderation.defs#modEventTakedown',
+        },
+        subject: {
+          $type: 'com.atproto.repo.strongRef',
+          uri: post.ref.uriStr,
+          cid: post.ref.cidStr,
+        },
+        subjectBlobCids: [post.images[0].image.ref.toString()],
+        createdBy: sc.dids.alice,
+      })
+      const result = await modClient.queryStatuses({
+        subject: post.ref.uriStr,
+      })
+      expect(result.subjectStatuses.length).toBe(1)
+      expect(result.subjectStatuses[0]).toMatchObject({
+        takendown: true,
+        subjectBlobCids: [post.images[0].image.ref.toString()],
+      })
+    })
+
+    it('are tracked on reverse-takendown subject based on previous status', async () => {
+      const post = sc.posts[sc.dids.carol][0]
+      await modClient.emitEvent({
+        event: {
+          $type: 'tools.ozone.moderation.defs#modEventReverseTakedown',
+        },
+        subject: {
+          $type: 'com.atproto.repo.strongRef',
+          uri: post.ref.uriStr,
+          cid: post.ref.cidStr,
+        },
+      })
+      const result = await modClient.queryStatuses({
+        subject: post.ref.uriStr,
+      })
+      expect(result.subjectStatuses.length).toBe(1)
+      expect(result.subjectStatuses[0]).toMatchObject({
+        takendown: false,
+        subjectBlobCids: [post.images[0].image.ref.toString()],
+      })
+    })
+  })
+})

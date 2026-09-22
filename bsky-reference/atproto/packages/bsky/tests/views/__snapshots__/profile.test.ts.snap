@@ -1,0 +1,859 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`pds profile views > fetches multiple profiles 1`] = `
+[
+  {
+    "associated": {
+      "activitySubscription": {
+        "allowSubscriptions": "followers",
+      },
+      "feedgens": 0,
+      "labeler": false,
+      "lists": 0,
+      "starterPacks": 0,
+    },
+    "avatar": "https://bsky.public.url/img/avatar/plain/user(1)/cids(0)",
+    "createdAt": "1970-01-01T00:00:00.000Z",
+    "description": "its me!",
+    "did": "user(0)",
+    "displayName": "ali",
+    "followersCount": 2,
+    "followsCount": 3,
+    "handle": "alice.test",
+    "indexedAt": "1970-01-01T00:00:00.000Z",
+    "labels": [
+      {
+        "cid": "cids(1)",
+        "cts": "1970-01-01T00:00:00.000Z",
+        "src": "user(0)",
+        "uri": "record(3)",
+        "val": "self-label-a",
+      },
+      {
+        "cid": "cids(1)",
+        "cts": "1970-01-01T00:00:00.000Z",
+        "src": "user(0)",
+        "uri": "record(3)",
+        "val": "self-label-b",
+      },
+    ],
+    "postsCount": 4,
+    "viewer": {
+      "blockedBy": false,
+      "followedBy": "record(1)",
+      "following": "record(0)",
+      "knownFollowers": {
+        "count": 1,
+        "followers": [
+          {
+            "associated": {
+              "activitySubscription": {
+                "allowSubscriptions": "followers",
+              },
+            },
+            "did": "user(2)",
+            "handle": "carol.test",
+            "labels": [],
+            "viewer": {
+              "blockedBy": false,
+              "following": "record(2)",
+              "muted": false,
+              "mutedOnlyQuoteposts": false,
+              "mutedOnlyReposts": false,
+            },
+          },
+        ],
+      },
+      "muted": false,
+      "mutedOnlyQuoteposts": false,
+      "mutedOnlyReposts": false,
+    },
+  },
+  {
+    "associated": {
+      "activitySubscription": {
+        "allowSubscriptions": "followers",
+      },
+      "feedgens": 0,
+      "labeler": false,
+      "lists": 0,
+      "starterPacks": 0,
+    },
+    "avatar": "https://bsky.public.url/img/avatar/plain/user(4)/cids(0)",
+    "createdAt": "1970-01-01T00:00:00.000Z",
+    "description": "hi im bob label_me",
+    "did": "user(3)",
+    "displayName": "bobby",
+    "followersCount": 2,
+    "followsCount": 2,
+    "handle": "bob.test",
+    "indexedAt": "1970-01-01T00:00:00.000Z",
+    "labels": [],
+    "postsCount": 3,
+    "viewer": {
+      "blockedBy": false,
+      "knownFollowers": {
+        "count": 1,
+        "followers": [
+          {
+            "associated": {
+              "activitySubscription": {
+                "allowSubscriptions": "followers",
+              },
+            },
+            "avatar": "https://bsky.public.url/img/avatar/plain/user(1)/cids(0)",
+            "createdAt": "1970-01-01T00:00:00.000Z",
+            "did": "user(0)",
+            "displayName": "ali",
+            "handle": "alice.test",
+            "labels": [
+              {
+                "cid": "cids(1)",
+                "cts": "1970-01-01T00:00:00.000Z",
+                "src": "user(0)",
+                "uri": "record(3)",
+                "val": "self-label-a",
+              },
+              {
+                "cid": "cids(1)",
+                "cts": "1970-01-01T00:00:00.000Z",
+                "src": "user(0)",
+                "uri": "record(3)",
+                "val": "self-label-b",
+              },
+            ],
+            "viewer": {
+              "blockedBy": false,
+              "followedBy": "record(1)",
+              "following": "record(0)",
+              "muted": false,
+              "mutedOnlyQuoteposts": false,
+              "mutedOnlyReposts": false,
+            },
+          },
+        ],
+      },
+      "muted": false,
+      "mutedOnlyQuoteposts": false,
+      "mutedOnlyReposts": false,
+    },
+  },
+  {
+    "associated": {
+      "activitySubscription": {
+        "allowSubscriptions": "followers",
+      },
+      "feedgens": 0,
+      "labeler": false,
+      "lists": 0,
+      "starterPacks": 0,
+    },
+    "did": "user(2)",
+    "followersCount": 2,
+    "followsCount": 1,
+    "handle": "carol.test",
+    "labels": [],
+    "postsCount": 2,
+    "viewer": {
+      "blockedBy": false,
+      "following": "record(2)",
+      "knownFollowers": {
+        "count": 1,
+        "followers": [
+          {
+            "associated": {
+              "activitySubscription": {
+                "allowSubscriptions": "followers",
+              },
+            },
+            "avatar": "https://bsky.public.url/img/avatar/plain/user(1)/cids(0)",
+            "createdAt": "1970-01-01T00:00:00.000Z",
+            "did": "user(0)",
+            "displayName": "ali",
+            "handle": "alice.test",
+            "labels": [
+              {
+                "cid": "cids(1)",
+                "cts": "1970-01-01T00:00:00.000Z",
+                "src": "user(0)",
+                "uri": "record(3)",
+                "val": "self-label-a",
+              },
+              {
+                "cid": "cids(1)",
+                "cts": "1970-01-01T00:00:00.000Z",
+                "src": "user(0)",
+                "uri": "record(3)",
+                "val": "self-label-b",
+              },
+            ],
+            "viewer": {
+              "blockedBy": false,
+              "followedBy": "record(1)",
+              "following": "record(0)",
+              "muted": false,
+              "mutedOnlyQuoteposts": false,
+              "mutedOnlyReposts": false,
+            },
+          },
+        ],
+      },
+      "muted": false,
+      "mutedOnlyQuoteposts": false,
+      "mutedOnlyReposts": false,
+    },
+  },
+  {
+    "associated": {
+      "activitySubscription": {
+        "allowSubscriptions": "followers",
+      },
+      "chat": {
+        "allowIncoming": "none",
+      },
+      "feedgens": 0,
+      "labeler": false,
+      "lists": 0,
+      "starterPacks": 0,
+    },
+    "did": "user(5)",
+    "followersCount": 1,
+    "followsCount": 1,
+    "handle": "dan.test",
+    "labels": [],
+    "postsCount": 2,
+    "viewer": {
+      "blockedBy": false,
+      "followedBy": "record(4)",
+      "knownFollowers": {
+        "count": 1,
+        "followers": [
+          {
+            "associated": {
+              "activitySubscription": {
+                "allowSubscriptions": "followers",
+              },
+            },
+            "avatar": "https://bsky.public.url/img/avatar/plain/user(1)/cids(0)",
+            "createdAt": "1970-01-01T00:00:00.000Z",
+            "did": "user(0)",
+            "displayName": "ali",
+            "handle": "alice.test",
+            "labels": [
+              {
+                "cid": "cids(1)",
+                "cts": "1970-01-01T00:00:00.000Z",
+                "src": "user(0)",
+                "uri": "record(3)",
+                "val": "self-label-a",
+              },
+              {
+                "cid": "cids(1)",
+                "cts": "1970-01-01T00:00:00.000Z",
+                "src": "user(0)",
+                "uri": "record(3)",
+                "val": "self-label-b",
+              },
+            ],
+            "viewer": {
+              "blockedBy": false,
+              "followedBy": "record(1)",
+              "following": "record(0)",
+              "muted": false,
+              "mutedOnlyQuoteposts": false,
+              "mutedOnlyReposts": false,
+            },
+          },
+        ],
+      },
+      "muted": false,
+      "mutedOnlyQuoteposts": false,
+      "mutedOnlyReposts": false,
+    },
+  },
+  {
+    "associated": {
+      "activitySubscription": {
+        "allowSubscriptions": "followers",
+      },
+      "feedgens": 0,
+      "labeler": false,
+      "lists": 0,
+      "starterPacks": 0,
+    },
+    "avatar": "https://bsky.public.url/img/avatar/plain/user(7)/cids(0)",
+    "createdAt": "1970-01-01T00:00:00.000Z",
+    "description": "It's me, eve",
+    "did": "user(6)",
+    "displayName": "eve",
+    "followersCount": 0,
+    "followsCount": 0,
+    "handle": "eve.test",
+    "indexedAt": "1970-01-01T00:00:00.000Z",
+    "labels": [],
+    "postsCount": 0,
+    "pronouns": "They/them",
+    "viewer": {
+      "blockedBy": false,
+      "muted": false,
+      "mutedOnlyQuoteposts": false,
+      "mutedOnlyReposts": false,
+    },
+  },
+  {
+    "associated": {
+      "activitySubscription": {
+        "allowSubscriptions": "followers",
+      },
+      "feedgens": 0,
+      "labeler": false,
+      "lists": 0,
+      "starterPacks": 0,
+    },
+    "avatar": "https://bsky.public.url/img/avatar/plain/user(9)/cids(0)",
+    "createdAt": "1970-01-01T00:00:00.000Z",
+    "description": "It's me, frank",
+    "did": "user(8)",
+    "displayName": "frank",
+    "followersCount": 0,
+    "followsCount": 0,
+    "handle": "frank.test",
+    "indexedAt": "1970-01-01T00:00:00.000Z",
+    "labels": [],
+    "postsCount": 0,
+    "viewer": {
+      "blockedBy": false,
+      "muted": false,
+      "mutedOnlyQuoteposts": false,
+      "mutedOnlyReposts": false,
+    },
+    "website": "https://frank.example.com",
+  },
+]
+`;
+
+exports[`pds profile views > fetches other's profile, with a follow 1`] = `
+{
+  "associated": {
+    "activitySubscription": {
+      "allowSubscriptions": "followers",
+    },
+    "feedgens": 0,
+    "labeler": false,
+    "lists": 0,
+    "starterPacks": 0,
+  },
+  "avatar": "https://bsky.public.url/img/avatar/plain/user(1)/cids(0)",
+  "createdAt": "1970-01-01T00:00:00.000Z",
+  "description": "its me!",
+  "did": "user(0)",
+  "displayName": "ali",
+  "followersCount": 2,
+  "followsCount": 3,
+  "handle": "alice.test",
+  "indexedAt": "1970-01-01T00:00:00.000Z",
+  "labels": [
+    {
+      "cid": "cids(1)",
+      "cts": "1970-01-01T00:00:00.000Z",
+      "src": "user(0)",
+      "uri": "record(3)",
+      "val": "self-label-a",
+    },
+    {
+      "cid": "cids(1)",
+      "cts": "1970-01-01T00:00:00.000Z",
+      "src": "user(0)",
+      "uri": "record(3)",
+      "val": "self-label-b",
+    },
+  ],
+  "postsCount": 4,
+  "viewer": {
+    "blockedBy": false,
+    "followedBy": "record(1)",
+    "following": "record(0)",
+    "knownFollowers": {
+      "count": 1,
+      "followers": [
+        {
+          "associated": {
+            "activitySubscription": {
+              "allowSubscriptions": "followers",
+            },
+          },
+          "did": "user(2)",
+          "handle": "carol.test",
+          "labels": [],
+          "viewer": {
+            "blockedBy": false,
+            "following": "record(2)",
+            "muted": false,
+            "mutedOnlyQuoteposts": false,
+            "mutedOnlyReposts": false,
+          },
+        },
+      ],
+    },
+    "muted": false,
+    "mutedOnlyQuoteposts": false,
+    "mutedOnlyReposts": false,
+  },
+}
+`;
+
+exports[`pds profile views > fetches other's profile, without a follow 1`] = `
+{
+  "associated": {
+    "activitySubscription": {
+      "allowSubscriptions": "followers",
+    },
+    "chat": {
+      "allowIncoming": "none",
+    },
+    "feedgens": 0,
+    "labeler": false,
+    "lists": 0,
+    "starterPacks": 0,
+  },
+  "did": "user(0)",
+  "followersCount": 1,
+  "followsCount": 1,
+  "handle": "dan.test",
+  "labels": [],
+  "postsCount": 2,
+  "viewer": {
+    "blockedBy": false,
+    "followedBy": "record(0)",
+    "knownFollowers": {
+      "count": 1,
+      "followers": [
+        {
+          "associated": {
+            "activitySubscription": {
+              "allowSubscriptions": "followers",
+            },
+          },
+          "avatar": "https://bsky.public.url/img/avatar/plain/user(2)/cids(0)",
+          "createdAt": "1970-01-01T00:00:00.000Z",
+          "did": "user(1)",
+          "displayName": "ali",
+          "handle": "alice.test",
+          "labels": [
+            {
+              "cid": "cids(1)",
+              "cts": "1970-01-01T00:00:00.000Z",
+              "src": "user(1)",
+              "uri": "record(3)",
+              "val": "self-label-a",
+            },
+            {
+              "cid": "cids(1)",
+              "cts": "1970-01-01T00:00:00.000Z",
+              "src": "user(1)",
+              "uri": "record(3)",
+              "val": "self-label-b",
+            },
+          ],
+          "viewer": {
+            "blockedBy": false,
+            "followedBy": "record(2)",
+            "following": "record(1)",
+            "muted": false,
+            "mutedOnlyQuoteposts": false,
+            "mutedOnlyReposts": false,
+          },
+        },
+      ],
+    },
+    "muted": false,
+    "mutedOnlyQuoteposts": false,
+    "mutedOnlyReposts": false,
+  },
+}
+`;
+
+exports[`pds profile views > fetches own profile 1`] = `
+{
+  "associated": {
+    "activitySubscription": {
+      "allowSubscriptions": "followers",
+    },
+    "feedgens": 0,
+    "labeler": false,
+    "lists": 0,
+    "starterPacks": 0,
+  },
+  "avatar": "https://bsky.public.url/img/avatar/plain/user(1)/cids(0)",
+  "createdAt": "1970-01-01T00:00:00.000Z",
+  "description": "its me!",
+  "did": "user(0)",
+  "displayName": "ali",
+  "followersCount": 2,
+  "followsCount": 3,
+  "handle": "alice.test",
+  "indexedAt": "1970-01-01T00:00:00.000Z",
+  "labels": [
+    {
+      "cid": "cids(1)",
+      "cts": "1970-01-01T00:00:00.000Z",
+      "src": "user(0)",
+      "uri": "record(4)",
+      "val": "self-label-a",
+    },
+    {
+      "cid": "cids(1)",
+      "cts": "1970-01-01T00:00:00.000Z",
+      "src": "user(0)",
+      "uri": "record(4)",
+      "val": "self-label-b",
+    },
+  ],
+  "postsCount": 4,
+  "viewer": {
+    "blockedBy": false,
+    "knownFollowers": {
+      "count": 2,
+      "followers": [
+        {
+          "associated": {
+            "activitySubscription": {
+              "allowSubscriptions": "followers",
+            },
+          },
+          "did": "user(2)",
+          "handle": "carol.test",
+          "labels": [],
+          "viewer": {
+            "blockedBy": false,
+            "followedBy": "record(1)",
+            "following": "record(0)",
+            "muted": false,
+            "mutedOnlyQuoteposts": false,
+            "mutedOnlyReposts": false,
+          },
+        },
+        {
+          "associated": {
+            "activitySubscription": {
+              "allowSubscriptions": "followers",
+            },
+          },
+          "avatar": "https://bsky.public.url/img/avatar/plain/user(4)/cids(0)",
+          "createdAt": "1970-01-01T00:00:00.000Z",
+          "did": "user(3)",
+          "displayName": "bobby",
+          "handle": "bob.test",
+          "labels": [],
+          "viewer": {
+            "blockedBy": false,
+            "followedBy": "record(3)",
+            "following": "record(2)",
+            "muted": false,
+            "mutedOnlyQuoteposts": false,
+            "mutedOnlyReposts": false,
+          },
+        },
+      ],
+    },
+    "muted": false,
+    "mutedOnlyQuoteposts": false,
+    "mutedOnlyReposts": false,
+  },
+}
+`;
+
+exports[`pds profile views > germ > returns germ record if it does exist 1`] = `
+{
+  "messageMeUrl": "https://chat.example.com/start-conversation",
+  "showButtonTo": "everyone",
+}
+`;
+
+exports[`pds profile views > presents avatars & banners 1`] = `
+{
+  "associated": {
+    "activitySubscription": {
+      "allowSubscriptions": "followers",
+    },
+    "feedgens": 0,
+    "labeler": false,
+    "lists": 0,
+    "starterPacks": 0,
+  },
+  "avatar": "https://bsky.public.url/img/avatar/plain/user(1)/cids(0)",
+  "banner": "https://bsky.public.url/img/banner/plain/user(1)/cids(1)",
+  "description": "new descript",
+  "did": "user(0)",
+  "displayName": "ali",
+  "followersCount": 2,
+  "followsCount": 3,
+  "handle": "alice.test",
+  "indexedAt": "1970-01-01T00:00:00.000Z",
+  "labels": [],
+  "postsCount": 4,
+  "viewer": {
+    "blockedBy": false,
+    "knownFollowers": {
+      "count": 2,
+      "followers": [
+        {
+          "associated": {
+            "activitySubscription": {
+              "allowSubscriptions": "followers",
+            },
+          },
+          "did": "user(2)",
+          "handle": "carol.test",
+          "labels": [],
+          "viewer": {
+            "blockedBy": false,
+            "followedBy": "record(1)",
+            "following": "record(0)",
+            "muted": false,
+            "mutedOnlyQuoteposts": false,
+            "mutedOnlyReposts": false,
+          },
+        },
+        {
+          "associated": {
+            "activitySubscription": {
+              "allowSubscriptions": "followers",
+            },
+          },
+          "avatar": "https://bsky.public.url/img/avatar/plain/user(4)/cids(0)",
+          "createdAt": "1970-01-01T00:00:00.000Z",
+          "did": "user(3)",
+          "displayName": "bobby",
+          "handle": "bob.test",
+          "labels": [],
+          "viewer": {
+            "blockedBy": false,
+            "followedBy": "record(3)",
+            "following": "record(2)",
+            "muted": false,
+            "mutedOnlyQuoteposts": false,
+            "mutedOnlyReposts": false,
+          },
+        },
+      ],
+    },
+    "muted": false,
+    "mutedOnlyQuoteposts": false,
+    "mutedOnlyReposts": false,
+  },
+}
+`;
+
+exports[`pds profile views > returns empty profile for actor that exists but has no profile 1`] = `
+{
+  "profiles": [
+    {
+      "associated": {
+        "activitySubscription": {
+          "allowSubscriptions": "followers",
+        },
+        "feedgens": 0,
+        "labeler": false,
+        "lists": 0,
+        "starterPacks": 0,
+      },
+      "avatar": "https://bsky.public.url/img/avatar/plain/user(1)/cids(0)",
+      "createdAt": "1970-01-01T00:00:00.000Z",
+      "description": "hi im bob label_me",
+      "did": "user(0)",
+      "displayName": "bobby",
+      "followersCount": 2,
+      "followsCount": 2,
+      "handle": "bob.test",
+      "indexedAt": "1970-01-01T00:00:00.000Z",
+      "labels": [],
+      "postsCount": 3,
+      "viewer": {
+        "blockedBy": false,
+        "followedBy": "record(1)",
+        "following": "record(0)",
+        "knownFollowers": {
+          "count": 1,
+          "followers": [
+            {
+              "associated": {
+                "activitySubscription": {
+                  "allowSubscriptions": "followers",
+                },
+                "chat": {
+                  "allowIncoming": "none",
+                },
+              },
+              "did": "user(2)",
+              "handle": "dan.test",
+              "labels": [],
+              "viewer": {
+                "blockedBy": false,
+                "following": "record(2)",
+                "muted": false,
+                "mutedOnlyQuoteposts": false,
+                "mutedOnlyReposts": false,
+              },
+            },
+          ],
+        },
+        "muted": false,
+        "mutedOnlyQuoteposts": false,
+        "mutedOnlyReposts": false,
+      },
+    },
+    {
+      "associated": {
+        "activitySubscription": {
+          "allowSubscriptions": "followers",
+        },
+        "feedgens": 0,
+        "labeler": false,
+        "lists": 0,
+        "starterPacks": 0,
+      },
+      "did": "user(3)",
+      "followersCount": 0,
+      "followsCount": 0,
+      "handle": "noprofile.test",
+      "labels": [],
+      "postsCount": 0,
+      "viewer": {
+        "blockedBy": false,
+        "muted": false,
+        "mutedOnlyQuoteposts": false,
+        "mutedOnlyReposts": false,
+      },
+    },
+  ],
+}
+`;
+
+exports[`pds profile views > returns empty profile if actor exists but has no profile 1`] = `
+{
+  "associated": {
+    "activitySubscription": {
+      "allowSubscriptions": "followers",
+    },
+    "feedgens": 0,
+    "labeler": false,
+    "lists": 0,
+    "starterPacks": 0,
+  },
+  "did": "user(0)",
+  "followersCount": 0,
+  "followsCount": 0,
+  "handle": "noprofile.test",
+  "labels": [],
+  "postsCount": 0,
+  "viewer": {
+    "blockedBy": false,
+    "muted": false,
+    "mutedOnlyQuoteposts": false,
+    "mutedOnlyReposts": false,
+  },
+}
+`;
+
+exports[`pds profile views > status > returns active status when within the duration 1`] = `
+{
+  "cid": "cids(0)",
+  "embed": {
+    "$type": "app.bsky.embed.external#view",
+    "external": {
+      "description": "testLink",
+      "title": "TestImage",
+      "uri": "https://example.com",
+    },
+  },
+  "expiresAt": "1970-01-01T00:00:00.000Z",
+  "isActive": true,
+  "isDisabled": false,
+  "labels": [],
+  "record": {
+    "$type": "app.bsky.actor.status",
+    "createdAt": "1970-01-01T00:00:00.000Z",
+    "durationMinutes": 10,
+    "embed": {
+      "$type": "app.bsky.embed.external",
+      "external": {
+        "description": "testLink",
+        "title": "TestImage",
+        "uri": "https://example.com",
+      },
+    },
+    "status": "app.bsky.actor.status#live",
+  },
+  "status": "app.bsky.actor.status#live",
+  "uri": "record(0)",
+}
+`;
+
+exports[`pds profile views > status > when outside the duration > returns inactive status 1`] = `
+{
+  "cid": "cids(0)",
+  "embed": {
+    "$type": "app.bsky.embed.external#view",
+    "external": {
+      "description": "testLink",
+      "title": "TestImage",
+      "uri": "https://example.com",
+    },
+  },
+  "expiresAt": "1970-01-01T00:00:00.000Z",
+  "isActive": false,
+  "isDisabled": false,
+  "labels": [],
+  "record": {
+    "$type": "app.bsky.actor.status",
+    "createdAt": "1970-01-01T00:00:00.000Z",
+    "durationMinutes": 10,
+    "embed": {
+      "$type": "app.bsky.embed.external",
+      "external": {
+        "description": "testLink",
+        "title": "TestImage",
+        "uri": "https://example.com",
+      },
+    },
+    "status": "app.bsky.actor.status#live",
+  },
+  "status": "app.bsky.actor.status#live",
+  "uri": "record(0)",
+}
+`;
+
+exports[`pds profile views > status > when taken down > it returns the live status with isDisabled=true for status owner 1`] = `
+{
+  "cid": "cids(0)",
+  "embed": {
+    "$type": "app.bsky.embed.external#view",
+    "external": {
+      "description": "testLink",
+      "title": "TestImage",
+      "uri": "https://example.com",
+    },
+  },
+  "expiresAt": "1970-01-01T00:00:00.000Z",
+  "isActive": true,
+  "isDisabled": true,
+  "labels": [],
+  "record": {
+    "$type": "app.bsky.actor.status",
+    "createdAt": "1970-01-01T00:00:00.000Z",
+    "durationMinutes": 10,
+    "embed": {
+      "$type": "app.bsky.embed.external",
+      "external": {
+        "description": "testLink",
+        "title": "TestImage",
+        "uri": "https://example.com",
+      },
+    },
+    "status": "app.bsky.actor.status#live",
+  },
+  "status": "app.bsky.actor.status#live",
+  "uri": "record(0)",
+}
+`;

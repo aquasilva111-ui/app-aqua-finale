@@ -1,0 +1,84 @@
+import type { PlainMessage } from '@bufbuild/protobuf'
+import type { ServiceImpl } from '@connectrpc/connect'
+import { keyBy } from '@atproto/common'
+import type { Service } from '../../../proto/bsky_connect.js'
+import {
+  type ActivitySubscription,
+  GetActivitySubscriptionsByActorAndSubjectsResponse,
+} from '../../../proto/bsky_pb.js'
+import { Namespaces } from '../../../stash.js'
+import type { Database } from '../db/index.js'
+import { StashKeyKey } from '../db/pagination.js'
+
+export default (db: Database): Partial<ServiceImpl<typeof Service>> => ({
+  async getActivitySubscriptionsByActorAndSubjects(req) {
+    const { actorDid, subjectDids } = req
+    if (subjectDids.length === 0) {
+      return new GetActivitySubscriptionsByActorAndSubjectsResponse({
+        subscriptions: [],
+      })
+    }
+
+    const res = await db.db
+      .selectFrom('activity_subscription')
+      .selectAll()
+      .where('creator', '=', actorDid)
+      .where('subjectDid', 'in', subjectDids)
+      .execute()
+
+    const bySubject = keyBy(res, 'subjectDid')
+    const subscriptions = subjectDids.map(
+      (did): PlainMessage<ActivitySubscription> => {
+        const subject = bySubject.get(did)
+        if (!subject) {
+          return {
+            actorDid,
+            namespace:
+              Namespaces.AppBskyNotificationDefsSubjectActivitySubscription
+                .$type,
+            key: '',
+            post: undefined,
+            reply: undefined,
+            subjectDid: '',
+          }
+        }
+
+        return {
+          actorDid,
+          namespace:
+            Namespaces.AppBskyNotificationDefsSubjectActivitySubscription.$type,
+          key: subject.key,
+          post: subject.post ? {} : undefined,
+          reply: subject.reply ? {} : undefined,
+          subjectDid: subject.subjectDid,
+        }
+      },
+    )
+
+    return {
+      subscriptions,
+    }
+  },
+
+  async getActivitySubscriptionDids(req) {
+    const { actorDid, cursor, limit } = req
+
+    let builder = db.db
+      .selectFrom('activity_subscription')
+      .selectAll()
+      .where('creator', '=', actorDid)
+
+    const { ref } = db.db.dynamic
+    const key = new StashKeyKey(ref('activity_subscription.key'))
+    builder = key.paginate(builder, {
+      cursor,
+      limit,
+    })
+    const page = key.page(await builder.execute(), limit)
+    const dids = page.items.map(({ subjectDid }) => subjectDid)
+    return {
+      dids,
+      cursor: page.cursor,
+    }
+  },
+})
