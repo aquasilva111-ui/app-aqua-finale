@@ -1,0 +1,264 @@
+import {useImperativeHandle, useRef, useState} from 'react'
+import {Pressable, type StyleProp, View, type ViewStyle} from 'react-native'
+import {BlueskyVideoView} from '@bsky.app/video'
+import {useLingui} from '@lingui/react/macro'
+
+import {HITSLOP_30} from '#/lib/constants'
+import {hasPlaybackStarted} from '#/lib/media/video/analytics'
+import {useAutoplayDisabled} from '#/state/preferences'
+import {atoms as a, useTheme} from '#/alf'
+import {AltBadgeWithDialog} from '#/components/AltBadgeWithDialog'
+import {useIsWithinMessage} from '#/components/dms/MessageContext'
+import {Mute_Stroke2_Corner0_Rounded as MuteIcon} from '#/components/icons/Mute'
+import {Pause_Filled_Corner0_Rounded as PauseIcon} from '#/components/icons/Pause'
+import {Play_Filled_Corner0_Rounded as PlayIcon} from '#/components/icons/Play'
+import {SpeakerVolumeFull_Stroke2_Corner0_Rounded as UnmuteIcon} from '#/components/icons/Speaker'
+import {KeepAwake} from '#/components/KeepAwake'
+import {MediaInsetBorder} from '#/components/MediaInsetBorder'
+import {useReportDialogMetadataContext} from '#/components/moderation/ReportDialog/ReportDialogMetadataContext'
+import {useVideoMuteState} from '#/components/Post/Embed/VideoEmbed/VideoVolumeContext'
+import {type app} from '#/lexicons'
+import {GifPresentationControls} from '../GifPresentationControls'
+import {TimeIndicator} from './TimeIndicator'
+
+export function VideoEmbedInnerNative({
+  ref,
+  embed,
+  setStatus,
+  setIsLoading,
+  setIsActive,
+  onPlaybackStart,
+  onError,
+}: {
+  ref: React.Ref<{togglePlayback: () => void}>
+  embed: app.bsky.embed.video.View
+  setStatus: (status: 'playing' | 'paused') => void
+  setIsLoading: (isLoading: boolean) => void
+  setIsActive: (isActive: boolean) => void
+  onPlaybackStart: (autoplay: boolean) => void
+  /**
+   * Called with the native error message before the component throws to the
+   * surrounding error boundary.
+   */
+  onError?: (error: string) => void
+}) {
+  const {t: l} = useLingui()
+  const videoRef = useRef<BlueskyVideoView>(null)
+  const autoplayDisabled = useAutoplayDisabled()
+  const isWithinMessage = useIsWithinMessage()
+  const [muted, setMuted] = useVideoMuteState()
+  const reportDialogMetadata = useReportDialogMetadataContext()
+  const maxTimeRemainingSeconds = useRef(0)
+  const playbackStartTrackedRef = useRef(false)
+
+  const [isPlaying, setIsPlaying] = useState(false)
+  const [timeRemaining, setTimeRemaining] = useState(0)
+  const [error, setError] = useState<string>()
+
+  useImperativeHandle(ref, () => ({
+    togglePlayback: () => {
+      videoRef.current?.togglePlayback()
+    },
+  }))
+
+  if (error) {
+    throw new Error(error)
+  }
+
+  const isGif = embed.presentation === 'gif'
+  const autoplay = !autoplayDisabled && !isWithinMessage
+
+  return (
+    <View style={[a.flex_1, a.relative]}>
+      <BlueskyVideoView
+        url={embed.playlist}
+        autoplay={autoplay}
+        beginMuted={isGif || (autoplayDisabled ? false : muted)}
+        style={[a.rounded_sm]}
+        onActiveChange={e => {
+          setIsActive(e.nativeEvent.isActive)
+        }}
+        onLoadingChange={e => {
+          setIsLoading(e.nativeEvent.isLoading)
+        }}
+        onMutedChange={e => {
+          if (!isGif) {
+            setMuted(e.nativeEvent.isMuted)
+          }
+        }}
+        onStatusChange={e => {
+          setStatus(e.nativeEvent.status)
+          setIsPlaying(e.nativeEvent.status === 'playing')
+        }}
+        onTimeRemainingChange={e => {
+          const {timeRemaining} = e.nativeEvent
+          setTimeRemaining(timeRemaining)
+          if (Number.isFinite(timeRemaining) && timeRemaining >= 0) {
+            maxTimeRemainingSeconds.current = Math.max(
+              maxTimeRemainingSeconds.current,
+              timeRemaining,
+            )
+            if (
+              !playbackStartTrackedRef.current &&
+              hasPlaybackStarted(
+                maxTimeRemainingSeconds.current - timeRemaining,
+              )
+            ) {
+              playbackStartTrackedRef.current = true
+              onPlaybackStart(autoplay)
+            }
+            if (!isGif && reportDialogMetadata) {
+              reportDialogMetadata.current.videoTimestampSeconds = Math.max(
+                0,
+                maxTimeRemainingSeconds.current - timeRemaining,
+              )
+            }
+          }
+        }}
+        onError={e => {
+          onError?.(e.nativeEvent.error)
+          setError(e.nativeEvent.error)
+        }}
+        ref={videoRef}
+        accessibilityLabel={embed.alt ? l`Video: ${embed.alt}` : l`Video`}
+        accessibilityHint=""
+      />
+      {isGif ? (
+        <GifPresentationControls
+          onPress={() => {
+            videoRef.current?.togglePlayback()
+          }}
+          isPlaying={isPlaying}
+          isLoading={false}
+          altText={embed.alt}
+        />
+      ) : (
+        <>
+          <VideoPresentationControls
+            enterFullscreen={() => {
+              videoRef.current?.enterFullscreen(true)
+            }}
+            toggleMuted={() => {
+              videoRef.current?.toggleMuted()
+            }}
+            togglePlayback={() => {
+              videoRef.current?.togglePlayback()
+            }}
+            isPlaying={isPlaying}
+            timeRemaining={timeRemaining}
+          />
+          {embed.alt && (
+            <AltBadgeWithDialog text={embed.alt} position="top-right" />
+          )}
+        </>
+      )}
+      <MediaInsetBorder />
+      <KeepAwake enabled={isPlaying} />
+    </View>
+  )
+}
+
+function VideoPresentationControls({
+  enterFullscreen,
+  toggleMuted,
+  togglePlayback,
+  timeRemaining,
+  isPlaying,
+}: {
+  enterFullscreen: () => void
+  toggleMuted: () => void
+  togglePlayback: () => void
+  timeRemaining: number
+  isPlaying: boolean
+}) {
+  const {t: l} = useLingui()
+  const t = useTheme()
+  const [muted] = useVideoMuteState()
+
+  // show countdown when:
+  // 1. timeRemaining is a number - was seeing NaNs
+  // 2. duration is greater than 0 - means metadata has loaded
+  // 3. we're less than 5 second into the video
+  const showTime = !isNaN(timeRemaining)
+
+  return (
+    <View style={[a.absolute, a.inset_0]}>
+      <Pressable
+        onPress={enterFullscreen}
+        style={a.flex_1}
+        accessibilityLabel={l`Video`}
+        accessibilityHint={l`Enters full screen`}
+        accessibilityRole="button"
+      />
+      <ControlButton
+        onPress={togglePlayback}
+        label={isPlaying ? l`Pause` : l`Play`}
+        accessibilityHint={l`Plays or pauses the video`}
+        style={{left: 6}}>
+        {isPlaying ? (
+          <PauseIcon width={13} fill={t.palette.white} />
+        ) : (
+          <PlayIcon width={13} fill={t.palette.white} />
+        )}
+      </ControlButton>
+      {showTime && <TimeIndicator time={timeRemaining} style={{left: 33}} />}
+      <ControlButton
+        onPress={toggleMuted}
+        label={
+          muted
+            ? l({message: `Unmute`, context: 'video'})
+            : l({message: `Mute`, context: 'video'})
+        }
+        accessibilityHint={l`Toggles the sound`}
+        style={{right: 6}}>
+        {muted ? (
+          <MuteIcon width={13} fill={t.palette.white} />
+        ) : (
+          <UnmuteIcon width={13} fill={t.palette.white} />
+        )}
+      </ControlButton>
+    </View>
+  )
+}
+
+function ControlButton({
+  onPress,
+  children,
+  label,
+  accessibilityHint,
+  style,
+}: {
+  onPress: () => void
+  children: React.ReactNode
+  label: string
+  accessibilityHint: string
+  style?: StyleProp<ViewStyle>
+}) {
+  return (
+    <View
+      style={[
+        a.absolute,
+        a.rounded_full,
+        a.justify_center,
+        {
+          backgroundColor: 'rgba(0, 0, 0, 0.5)',
+          paddingHorizontal: 4,
+          paddingVertical: 4,
+          bottom: 6,
+          minHeight: 21,
+          minWidth: 21,
+        },
+        style,
+      ]}>
+      <Pressable
+        onPress={onPress}
+        style={a.flex_1}
+        accessibilityLabel={label}
+        accessibilityHint={accessibilityHint}
+        accessibilityRole="button"
+        hitSlop={HITSLOP_30}>
+        {children}
+      </Pressable>
+    </View>
+  )
+}

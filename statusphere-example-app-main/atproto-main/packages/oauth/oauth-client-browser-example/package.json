@@ -1,0 +1,67 @@
+{
+  "name": "@atproto/oauth-client-browser-example",
+  "version": "0.1.8",
+  "license": "MIT",
+  "description": "Example single page application app using ATPROTO OAuth",
+  "keywords": [
+    "example",
+    "spa",
+    "atproto",
+    "oauth",
+    "browser",
+    "client"
+  ],
+  "homepage": "https://atproto.com",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/bluesky-social/atproto",
+    "directory": "packages/oauth/oauth-client-browser"
+  },
+  "bin": "./bin.js",
+  "files": [
+    "./bin.js",
+    "./server.js",
+    "./files.d.ts",
+    "./dist",
+    "./README.md",
+    "./CHANGELOG.md"
+  ],
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./files.d.ts",
+      "default": "./dist/files.json"
+    },
+    "./server": {
+      "default": "./server.js"
+    }
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "dependencies": {
+    "http-terminator": "^3.2.0"
+  },
+  "devDependencies": {
+    "@atproto-labs/rolldown-plugin-bundle-manifest": "workspace:^",
+    "@atproto/lex": "workspace:^",
+    "@atproto/oauth-client-browser": "workspace:^",
+    "@phosphor-icons/react": "^2.1.10",
+    "@tailwindcss/vite": "^4.3.3",
+    "@tanstack/react-query": "^5.102.8",
+    "@types/react": "^19.2.18",
+    "@types/react-dom": "^19.2.7",
+    "@vitejs/plugin-react": "^6.1.1",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8",
+    "tailwindcss": "^4.3.3",
+    "vite": "^8.2.2"
+  },
+  "scripts": {
+    "codegen:lex": "lex build --clear --indexFile --lexicons ../../../lexicons --out ./src/lexicons",
+    "prebuild": "pnpm run '/^(codegen:.+)$/'",
+    "build:ui": "vite build --emptyOutDir",
+    "build": "pnpm run build:ui -- ignore additional npm args",
+    "dev": "vite --port 8080 --host 127.0.0.1"
+  }
+}

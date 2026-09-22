@@ -1,0 +1,12 @@
+const {withEntitlementsPlist} = require('expo/config-plugins')
+
+const withAppEntitlements = config => {
+  return withEntitlementsPlist(config, async config => {
+    config.modResults['com.apple.security.application-groups'] = [
+      `group.app.bsky`,
+    ]
+    return config
+  })
+}
+
+module.exports = {withAppEntitlements}

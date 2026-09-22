@@ -1,0 +1,2897 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`feed generation > does not embed taken-down feed generator records in posts 1`] = `
+{
+  "author": {
+    "associated": {
+      "activitySubscription": {
+        "allowSubscriptions": "followers",
+      },
+    },
+    "avatar": "https://bsky.public.url/img/avatar/plain/user(1)/cids(1)",
+    "createdAt": "1970-01-01T00:00:00.000Z",
+    "did": "user(0)",
+    "displayName": "bobby",
+    "handle": "bob.test",
+    "labels": [],
+    "viewer": {
+      "blockedBy": false,
+      "muted": false,
+      "mutedOnlyQuoteposts": false,
+      "mutedOnlyReposts": false,
+    },
+  },
+  "bookmarkCount": 0,
+  "cid": "cids(0)",
+  "embed": {
+    "$type": "app.bsky.embed.record#view",
+    "record": {
+      "$type": "app.bsky.embed.record#viewNotFound",
+      "notFound": true,
+      "uri": "record(1)",
+    },
+  },
+  "indexedAt": "1970-01-01T00:00:00.000Z",
+  "labels": [],
+  "likeCount": 0,
+  "quoteCount": 0,
+  "record": {
+    "$type": "app.bsky.feed.post",
+    "createdAt": "1970-01-01T00:00:00.000Z",
+    "embed": {
+      "$type": "app.bsky.embed.record",
+      "record": {
+        "cid": "cids(2)",
+        "uri": "record(1)",
+      },
+    },
+    "text": "weird feed",
+  },
+  "replyCount": 0,
+  "repostCount": 0,
+  "uri": "record(0)",
+  "viewer": {
+    "bookmarked": false,
+    "embeddingDisabled": false,
+    "threadMuted": false,
+  },
+}
+`;
+
+exports[`feed generation > does not embed taken-down starter pack records in posts 1`] = `
+{
+  "author": {
+    "associated": {
+      "activitySubscription": {
+        "allowSubscriptions": "followers",
+      },
+    },
+    "avatar": "https://bsky.public.url/img/avatar/plain/user(1)/cids(1)",
+    "createdAt": "1970-01-01T00:00:00.000Z",
+    "did": "user(0)",
+    "displayName": "bobby",
+    "handle": "bob.test",
+    "labels": [],
+    "viewer": {
+      "blockedBy": false,
+      "muted": false,
+      "mutedOnlyQuoteposts": false,
+      "mutedOnlyReposts": false,
+    },
+  },
+  "bookmarkCount": 0,
+  "cid": "cids(0)",
+  "embed": {
+    "$type": "app.bsky.embed.record#view",
+    "record": {
+      "$type": "app.bsky.embed.record#viewNotFound",
+      "notFound": true,
+      "uri": "record(1)",
+    },
+  },
+  "indexedAt": "1970-01-01T00:00:00.000Z",
+  "labels": [],
+  "likeCount": 0,
+  "quoteCount": 0,
+  "record": {
+    "$type": "app.bsky.feed.post",
+    "createdAt": "1970-01-01T00:00:00.000Z",
+    "embed": {
+      "$type": "app.bsky.embed.record",
+      "record": {
+        "cid": "cids(2)",
+        "uri": "record(1)",
+      },
+    },
+    "text": "annoying starter pack",
+  },
+  "replyCount": 0,
+  "repostCount": 0,
+  "uri": "record(0)",
+  "viewer": {
+    "bookmarked": false,
+    "embeddingDisabled": false,
+    "threadMuted": false,
+  },
+}
+`;
+
+exports[`feed generation > embeds feed generator records in posts 1`] = `
+{
+  "author": {
+    "associated": {
+      "activitySubscription": {
+        "allowSubscriptions": "followers",
+      },
+    },
+    "avatar": "https://bsky.public.url/img/avatar/plain/user(1)/cids(1)",
+    "createdAt": "1970-01-01T00:00:00.000Z",
+    "did": "user(0)",
+    "displayName": "bobby",
+    "handle": "bob.test",
+    "labels": [],
+    "viewer": {
+      "blockedBy": false,
+      "muted": false,
+      "mutedOnlyQuoteposts": false,
+      "mutedOnlyReposts": false,
+    },
+  },
+  "bookmarkCount": 0,
+  "cid": "cids(0)",
+  "embed": {
+    "$type": "app.bsky.embed.record#view",
+    "record": {
+      "$type": "app.bsky.feed.defs#generatorView",
+      "cid": "cids(2)",
+      "creator": {
+        "associated": {
+          "activitySubscription": {
+            "allowSubscriptions": "followers",
+          },
+        },
+        "avatar": "https://bsky.public.url/img/avatar/plain/user(4)/cids(1)",
+        "createdAt": "1970-01-01T00:00:00.000Z",
+        "description": "its me!",
+        "did": "user(3)",
+        "displayName": "ali",
+        "handle": "alice.test",
+        "indexedAt": "1970-01-01T00:00:00.000Z",
+        "labels": [
+          {
+            "cid": "cids(3)",
+            "cts": "1970-01-01T00:00:00.000Z",
+            "src": "user(3)",
+            "uri": "record(4)",
+            "val": "self-label-a",
+          },
+          {
+            "cid": "cids(3)",
+            "cts": "1970-01-01T00:00:00.000Z",
+            "src": "user(3)",
+            "uri": "record(4)",
+            "val": "self-label-b",
+          },
+        ],
+        "viewer": {
+          "blockedBy": false,
+          "followedBy": "record(3)",
+          "following": "record(2)",
+          "muted": false,
+          "mutedOnlyQuoteposts": false,
+          "mutedOnlyReposts": false,
+        },
+      },
+      "description": "Provides all feed candidates",
+      "did": "user(2)",
+      "displayName": "All",
+      "indexedAt": "1970-01-01T00:00:00.000Z",
+      "labels": [],
+      "likeCount": 2,
+      "uri": "record(1)",
+      "viewer": {
+        "like": "record(5)",
+      },
+    },
+  },
+  "indexedAt": "1970-01-01T00:00:00.000Z",
+  "labels": [],
+  "likeCount": 0,
+  "quoteCount": 0,
+  "record": {
+    "$type": "app.bsky.feed.post",
+    "createdAt": "1970-01-01T00:00:00.000Z",
+    "embed": {
+      "$type": "app.bsky.embed.record",
+      "record": {
+        "cid": "cids(2)",
+        "uri": "record(1)",
+      },
+    },
+    "text": "cool feed!",
+  },
+  "replyCount": 0,
+  "repostCount": 0,
+  "uri": "record(0)",
+  "viewer": {
+    "bookmarked": false,
+    "embeddingDisabled": false,
+    "threadMuted": false,
+  },
+}
+`;
+
+exports[`feed generation > embeds starter pack records in posts 1`] = `
+{
+  "author": {
+    "associated": {
+      "activitySubscription": {
+        "allowSubscriptions": "followers",
+      },
+    },
+    "avatar": "https://bsky.public.url/img/avatar/plain/user(1)/cids(1)",
+    "createdAt": "1970-01-01T00:00:00.000Z",
+    "did": "user(0)",
+    "displayName": "bobby",
+    "handle": "bob.test",
+    "labels": [],
+    "viewer": {
+      "blockedBy": false,
+      "muted": false,
+      "mutedOnlyQuoteposts": false,
+      "mutedOnlyReposts": false,
+    },
+  },
+  "bookmarkCount": 0,
+  "cid": "cids(0)",
+  "embed": {
+    "$type": "app.bsky.embed.record#view",
+    "record": {
+      "$type": "app.bsky.graph.defs#starterPackViewBasic",
+      "cid": "cids(2)",
+      "creator": {
+        "associated": {
+          "activitySubscription": {
+            "allowSubscriptions": "followers",
+          },
+        },
+        "avatar": "https://bsky.public.url/img/avatar/plain/user(3)/cids(1)",
+        "createdAt": "1970-01-01T00:00:00.000Z",
+        "did": "user(2)",
+        "displayName": "ali",
+        "handle": "alice.test",
+        "labels": [
+          {
+            "cid": "cids(3)",
+            "cts": "1970-01-01T00:00:00.000Z",
+            "src": "user(2)",
+            "uri": "record(5)",
+            "val": "self-label-a",
+          },
+          {
+            "cid": "cids(3)",
+            "cts": "1970-01-01T00:00:00.000Z",
+            "src": "user(2)",
+            "uri": "record(5)",
+            "val": "self-label-b",
+          },
+        ],
+        "viewer": {
+          "blockedBy": false,
+          "followedBy": "record(4)",
+          "following": "record(3)",
+          "muted": false,
+          "mutedOnlyQuoteposts": false,
+          "mutedOnlyReposts": false,
+        },
+      },
+      "indexedAt": "1970-01-01T00:00:00.000Z",
+      "joinedAllTimeCount": 0,
+      "joinedWeekCount": 0,
+      "labels": [],
+      "record": {
+        "$type": "app.bsky.graph.starterpack",
+        "createdAt": "1970-01-01T00:00:00.000Z",
+        "description": "",
+        "descriptionFacets": [],
+        "feeds": [],
+        "list": "record(2)",
+        "name": "awesome starter pack!",
+      },
+      "uri": "record(1)",
+    },
+  },
+  "indexedAt": "1970-01-01T00:00:00.000Z",
+  "labels": [],
+  "likeCount": 0,
+  "quoteCount": 0,
+  "record": {
+    "$type": "app.bsky.feed.post",
+    "createdAt": "1970-01-01T00:00:00.000Z",
+    "embed": {
+      "$type": "app.bsky.embed.record",
+      "record": {
+        "cid": "cids(2)",
+        "uri": "record(1)",
+      },
+    },
+    "text": "sick starter pack!",
+  },
+  "replyCount": 0,
+  "repostCount": 0,
+  "uri": "record(0)",
+  "viewer": {
+    "bookmarked": false,
+    "embeddingDisabled": false,
+    "threadMuted": false,
+  },
+}
+`;
+
+exports[`feed generation > getActorFeeds fetches feed generators by actor. 1`] = `
+[
+  {
+    "cid": "cids(0)",
+    "creator": {
+      "associated": {
+        "activitySubscription": {
+          "allowSubscriptions": "followers",
+        },
+      },
+      "avatar": "https://bsky.public.url/img/avatar/plain/user(2)/cids(1)",
+      "createdAt": "1970-01-01T00:00:00.000Z",
+      "description": "its me!",
+      "did": "user(1)",
+      "displayName": "ali",
+      "handle": "alice.test",
+      "indexedAt": "1970-01-01T00:00:00.000Z",
+      "labels": [
+        {
+          "cid": "cids(2)",
+          "cts": "1970-01-01T00:00:00.000Z",
+          "src": "user(1)",
+          "uri": "record(3)",
+          "val": "self-label-a",
+        },
+        {
+          "cid": "cids(2)",
+          "cts": "1970-01-01T00:00:00.000Z",
+          "src": "user(1)",
+          "uri": "record(3)",
+          "val": "self-label-b",
+        },
+      ],
+      "viewer": {
+        "blockedBy": false,
+        "followedBy": "record(2)",
+        "following": "record(1)",
+        "muted": false,
+        "mutedOnlyQuoteposts": false,
+        "mutedOnlyReposts": false,
+      },
+    },
+    "description": "Provides odd-indexed feed candidates",
+    "did": "user(0)",
+    "displayName": "Odd",
+    "indexedAt": "1970-01-01T00:00:00.000Z",
+    "labels": [],
+    "likeCount": 0,
+    "uri": "record(0)",
+    "viewer": {},
+  },
+  {
+    "cid": "cids(3)",
+    "creator": {
+      "associated": {
+        "activitySubscription": {
+          "allowSubscriptions": "followers",
+        },
+      },
+      "avatar": "https://bsky.public.url/img/avatar/plain/user(2)/cids(1)",
+      "createdAt": "1970-01-01T00:00:00.000Z",
+      "description": "its me!",
+      "did": "user(1)",
+      "displayName": "ali",
+      "handle": "alice.test",
+      "indexedAt": "1970-01-01T00:00:00.000Z",
+      "labels": [
+        {
+          "cid": "cids(2)",
+          "cts": "1970-01-01T00:00:00.000Z",
+          "src": "user(1)",
+          "uri": "record(3)",
+          "val": "self-label-a",
+        },
+        {
+          "cid": "cids(2)",
+          "cts": "1970-01-01T00:00:00.000Z",
+          "src": "user(1)",
+          "uri": "record(3)",
+          "val": "self-label-b",
+        },
+      ],
+      "viewer": {
+        "blockedBy": false,
+        "followedBy": "record(2)",
+        "following": "record(1)",
+        "muted": false,
+        "mutedOnlyQuoteposts": false,
+        "mutedOnlyReposts": false,
+      },
+    },
+    "description": "Returns a post with skeletonReasonPin",
+    "did": "user(0)",
+    "displayName": "Pinned",
+    "indexedAt": "1970-01-01T00:00:00.000Z",
+    "labels": [],
+    "likeCount": 0,
+    "uri": "record(4)",
+    "viewer": {},
+  },
+  {
+    "acceptsInteractions": true,
+    "cid": "cids(4)",
+    "creator": {
+      "associated": {
+        "activitySubscription": {
+          "allowSubscriptions": "followers",
+        },
+      },
+      "avatar": "https://bsky.public.url/img/avatar/plain/user(2)/cids(1)",
+      "createdAt": "1970-01-01T00:00:00.000Z",
+      "description": "its me!",
+      "did": "user(1)",
+      "displayName": "ali",
+      "handle": "alice.test",
+      "indexedAt": "1970-01-01T00:00:00.000Z",
+      "labels": [
+        {
+          "cid": "cids(2)",
+          "cts": "1970-01-01T00:00:00.000Z",
+          "src": "user(1)",
+          "uri": "record(3)",
+          "val": "self-label-a",
+        },
+        {
+          "cid": "cids(2)",
+          "cts": "1970-01-01T00:00:00.000Z",
+          "src": "user(1)",
+          "uri": "record(3)",
+          "val": "self-label-b",
+        },
+      ],
+      "viewer": {
+        "blockedBy": false,
+        "followedBy": "record(2)",
+        "following": "record(1)",
+        "muted": false,
+        "mutedOnlyQuoteposts": false,
+        "mutedOnlyReposts": false,
+      },
+    },
+    "description": "Has acceptsInteractions set to true",
+    "did": "user(0)",
+    "displayName": "Accepts Interactions",
+    "indexedAt": "1970-01-01T00:00:00.000Z",
+    "labels": [],
+    "likeCount": 0,
+    "uri": "record(5)",
+    "viewer": {},
+  },
+  {
+    "cid": "cids(5)",
+    "contentMode": "app.bsky.feed.defs#contentModeVideo",
+    "creator": {
+      "associated": {
+        "activitySubscription": {
+          "allowSubscriptions": "followers",
+        },
+      },
+      "avatar": "https://bsky.public.url/img/avatar/plain/user(2)/cids(1)",
+      "createdAt": "1970-01-01T00:00:00.000Z",
+      "description": "its me!",
+      "did": "user(1)",
+      "displayName": "ali",
+      "handle": "alice.test",
+      "indexedAt": "1970-01-01T00:00:00.000Z",
+      "labels": [
+        {
+          "cid": "cids(2)",
+          "cts": "1970-01-01T00:00:00.000Z",
+          "src": "user(1)",
+          "uri": "record(3)",
+          "val": "self-label-a",
+        },
+        {
+          "cid": "cids(2)",
+          "cts": "1970-01-01T00:00:00.000Z",
+          "src": "user(1)",
+          "uri": "record(3)",
+          "val": "self-label-b",
+        },
+      ],
+      "viewer": {
+        "blockedBy": false,
+        "followedBy": "record(2)",
+        "following": "record(1)",
+        "muted": false,
+        "mutedOnlyQuoteposts": false,
+        "mutedOnlyReposts": false,
+      },
+    },
+    "description": "Has a contentMode specified",
+    "did": "user(0)",
+    "displayName": "Content mode video",
+    "indexedAt": "1970-01-01T00:00:00.000Z",
+    "labels": [],
+    "likeCount": 0,
+    "uri": "record(6)",
+    "viewer": {},
+  },
+  {
+    "cid": "cids(6)",
+    "creator": {
+      "associated": {
+        "activitySubscription": {
+          "allowSubscriptions": "followers",
+        },
+      },
+      "avatar": "https://bsky.public.url/img/avatar/plain/user(2)/cids(1)",
+      "createdAt": "1970-01-01T00:00:00.000Z",
+      "description": "its me!",
+      "did": "user(1)",
+      "displayName": "ali",
+      "handle": "alice.test",
+      "indexedAt": "1970-01-01T00:00:00.000Z",
+      "labels": [
+        {
+          "cid": "cids(2)",
+          "cts": "1970-01-01T00:00:00.000Z",
+          "src": "user(1)",
+          "uri": "record(3)",
+          "val": "self-label-a",
+        },
+        {
+          "cid": "cids(2)",
+          "cts": "1970-01-01T00:00:00.000Z",
+          "src": "user(1)",
+          "uri": "record(3)",
+          "val": "self-label-b",
+        },
+      ],
+      "viewer": {
+        "blockedBy": false,
+        "followedBy": "record(2)",
+        "following": "record(1)",
+        "muted": false,
+        "mutedOnlyQuoteposts": false,
+        "mutedOnlyReposts": false,
+      },
+    },
+    "description": "Provides all feed candidates when authed",
+    "did": "user(0)",
+    "displayName": "Needs Auth",
+    "indexedAt": "1970-01-01T00:00:00.000Z",
+    "labels": [],
+    "likeCount": 0,
+    "uri": "record(7)",
+    "viewer": {},
+  },
+  {
+    "cid": "cids(7)",
+    "creator": {
+      "associated": {
+        "activitySubscription": {
+          "allowSubscriptions": "followers",
+        },
+      },
+      "avatar": "https://bsky.public.url/img/avatar/plain/user(2)/cids(1)",
+      "createdAt": "1970-01-01T00:00:00.000Z",
+      "description": "its me!",
+      "did": "user(1)",
+      "displayName": "ali",
+      "handle": "alice.test",
+      "indexedAt": "1970-01-01T00:00:00.000Z",
+      "labels": [
+        {
+          "cid": "cids(2)",
+          "cts": "1970-01-01T00:00:00.000Z",
+          "src": "user(1)",
+          "uri": "record(3)",
+          "val": "self-label-a",
+        },
+        {
+          "cid": "cids(2)",
+          "cts": "1970-01-01T00:00:00.000Z",
+          "src": "user(1)",
+          "uri": "record(3)",
+          "val": "self-label-b",
+        },
+      ],
+      "viewer": {
+        "blockedBy": false,
+        "followedBy": "record(2)",
+        "following": "record(1)",
+        "muted": false,
+        "mutedOnlyQuoteposts": false,
+        "mutedOnlyReposts": false,
+      },
+    },
+    "description": "Echoes back the same cursor it received",
+    "did": "user(0)",
+    "displayName": "Bad Pagination Cursor",
+    "indexedAt": "1970-01-01T00:00:00.000Z",
+    "labels": [],
+    "likeCount": 0,
+    "uri": "record(8)",
+    "viewer": {},
+  },
+  {
+    "cid": "cids(8)",
+    "creator": {
+      "associated": {
+        "activitySubscription": {
+          "allowSubscriptions": "followers",
+        },
+      },
+      "avatar": "https://bsky.public.url/img/avatar/plain/user(2)/cids(1)",
+      "createdAt": "1970-01-01T00:00:00.000Z",
+      "description": "its me!",
+      "did": "user(1)",
+      "displayName": "ali",
+      "handle": "alice.test",
+      "indexedAt": "1970-01-01T00:00:00.000Z",
+      "labels": [
+        {
+          "cid": "cids(2)",
+          "cts": "1970-01-01T00:00:00.000Z",
+          "src": "user(1)",
+          "uri": "record(3)",
+          "val": "self-label-a",
+        },
+        {
+          "cid": "cids(2)",
+          "cts": "1970-01-01T00:00:00.000Z",
+          "src": "user(1)",
+          "uri": "record(3)",
+          "val": "self-label-b",
+        },
+      ],
+      "viewer": {
+        "blockedBy": false,
+        "followedBy": "record(2)",
+        "following": "record(1)",
+        "muted": false,
+        "mutedOnlyQuoteposts": false,
+        "mutedOnlyReposts": false,
+      },
+    },
+    "description": "Provides all feed candidates, blindly ignoring pagination limit",
+    "did": "user(0)",
+    "displayName": "Bad Pagination Limit",
+    "indexedAt": "1970-01-01T00:00:00.000Z",
+    "labels": [],
+    "likeCount": 0,
+    "uri": "record(9)",
+    "viewer": {},
+  },
+  {
+    "cid": "cids(9)",
+    "creator": {
+      "associated": {
+        "activitySubscription": {
+          "allowSubscriptions": "followers",
+        },
+      },
+      "avatar": "https://bsky.public.url/img/avatar/plain/user(2)/cids(1)",
+      "createdAt": "1970-01-01T00:00:00.000Z",
+      "description": "its me!",
+      "did": "user(1)",
+      "displayName": "ali",
+      "handle": "alice.test",
+      "indexedAt": "1970-01-01T00:00:00.000Z",
+      "labels": [
+        {
+          "cid": "cids(2)",
+          "cts": "1970-01-01T00:00:00.000Z",
+          "src": "user(1)",
+          "uri": "record(3)",
+          "val": "self-label-a",
+        },
+        {
+          "cid": "cids(2)",
+          "cts": "1970-01-01T00:00:00.000Z",
+          "src": "user(1)",
+          "uri": "record(3)",
+          "val": "self-label-b",
+        },
+      ],
+      "viewer": {
+        "blockedBy": false,
+        "followedBy": "record(2)",
+        "following": "record(1)",
+        "muted": false,
+        "mutedOnlyQuoteposts": false,
+        "mutedOnlyReposts": false,
+      },
+    },
+    "description": "Provides even-indexed feed candidates",
+    "did": "user(0)",
+    "displayName": "Even",
+    "indexedAt": "1970-01-01T00:00:00.000Z",
+    "labels": [],
+    "likeCount": 0,
+    "uri": "record(10)",
+    "viewer": {},
+  },
+  {
+    "cid": "cids(10)",
+    "creator": {
+      "associated": {
+        "activitySubscription": {
+          "allowSubscriptions": "followers",
+        },
+      },
+      "avatar": "https://bsky.public.url/img/avatar/plain/user(2)/cids(1)",
+      "createdAt": "1970-01-01T00:00:00.000Z",
+      "description": "its me!",
+      "did": "user(1)",
+      "displayName": "ali",
+      "handle": "alice.test",
+      "indexedAt": "1970-01-01T00:00:00.000Z",
+      "labels": [
+        {
+          "cid": "cids(2)",
+          "cts": "1970-01-01T00:00:00.000Z",
+          "src": "user(1)",
+          "uri": "record(3)",
+          "val": "self-label-a",
+        },
+        {
+          "cid": "cids(2)",
+          "cts": "1970-01-01T00:00:00.000Z",
+          "src": "user(1)",
+          "uri": "record(3)",
+          "val": "self-label-b",
+        },
+      ],
+      "viewer": {
+        "blockedBy": false,
+        "followedBy": "record(2)",
+        "following": "record(1)",
+        "muted": false,
+        "mutedOnlyQuoteposts": false,
+        "mutedOnlyReposts": false,
+      },
+    },
+    "description": "Provides all feed candidates",
+    "did": "user(0)",
+    "displayName": "All",
+    "indexedAt": "1970-01-01T00:00:00.000Z",
+    "labels": [],
+    "likeCount": 2,
+    "uri": "record(11)",
+    "viewer": {
+      "like": "record(12)",
+    },
+  },
+]
+`;
+
+exports[`feed generation > getFeed > paginates, handling replies and reposts. 1`] = `
+[
+  {
+    "feedContext": "item-0",
+    "post": {
+      "author": {
+        "associated": {
+          "activitySubscription": {
+            "allowSubscriptions": "followers",
+          },
+        },
+        "avatar": "https://bsky.public.url/img/avatar/plain/user(1)/cids(1)",
+        "createdAt": "1970-01-01T00:00:00.000Z",
+        "did": "user(0)",
+        "displayName": "ali",
+        "handle": "alice.test",
+        "labels": [
+          {
+            "cid": "cids(2)",
+            "cts": "1970-01-01T00:00:00.000Z",
+            "src": "user(0)",
+            "uri": "record(1)",
+            "val": "self-label-a",
+          },
+          {
+            "cid": "cids(2)",
+            "cts": "1970-01-01T00:00:00.000Z",
+            "src": "user(0)",
+            "uri": "record(1)",
+            "val": "self-label-b",
+          },
+        ],
+        "viewer": {
+          "blockedBy": false,
+          "muted": false,
+          "mutedOnlyQuoteposts": false,
+          "mutedOnlyReposts": false,
+        },
+      },
+      "bookmarkCount": 0,
+      "cid": "cids(0)",
+      "indexedAt": "1970-01-01T00:00:00.000Z",
+      "labels": [
+        {
+          "cid": "cids(0)",
+          "cts": "1970-01-01T00:00:00.000Z",
+          "src": "user(0)",
+          "uri": "record(0)",
+          "val": "self-label",
+        },
+      ],
+      "likeCount": 0,
+      "quoteCount": 0,
+      "record": {
+        "$type": "app.bsky.feed.post",
+        "createdAt": "1970-01-01T00:00:00.000Z",
+        "labels": {
+          "$type": "com.atproto.label.defs#selfLabels",
+          "values": [
+            {
+              "val": "self-label",
+            },
+          ],
+        },
+        "text": "hey there",
+      },
+      "replyCount": 0,
+      "repostCount": 0,
+      "uri": "record(0)",
+      "viewer": {
+        "bookmarked": false,
+        "embeddingDisabled": false,
+        "threadMuted": false,
+      },
+    },
+    "reqId": "req-id-abc-def-ghi",
+  },
+  {
+    "feedContext": "item-1",
+    "post": {
+      "author": {
+        "associated": {
+          "activitySubscription": {
+            "allowSubscriptions": "followers",
+          },
+        },
+        "avatar": "https://bsky.public.url/img/avatar/plain/user(3)/cids(1)",
+        "createdAt": "1970-01-01T00:00:00.000Z",
+        "did": "user(2)",
+        "displayName": "bobby",
+        "handle": "bob.test",
+        "labels": [],
+        "viewer": {
+          "blockedBy": false,
+          "followedBy": "record(4)",
+          "following": "record(3)",
+          "muted": false,
+          "mutedOnlyQuoteposts": false,
+          "mutedOnlyReposts": false,
+        },
+      },
+      "bookmarkCount": 0,
+      "cid": "cids(3)",
+      "indexedAt": "1970-01-01T00:00:00.000Z",
+      "labels": [],
+      "likeCount": 0,
+      "quoteCount": 1,
+      "record": {
+        "$type": "app.bsky.feed.post",
+        "createdAt": "1970-01-01T00:00:00.000Z",
+        "langs": [
+          "en-US",
+          "i-klingon",
+        ],
+        "text": "bob back at it again!",
+      },
+      "replyCount": 0,
+      "repostCount": 0,
+      "uri": "record(2)",
+      "viewer": {
+        "bookmarked": false,
+        "embeddingDisabled": false,
+        "threadMuted": false,
+      },
+    },
+    "reqId": "req-id-abc-def-ghi",
+  },
+  {
+    "feedContext": "item-2",
+    "post": {
+      "author": {
+        "associated": {
+          "activitySubscription": {
+            "allowSubscriptions": "followers",
+          },
+        },
+        "did": "user(4)",
+        "handle": "carol.test",
+        "labels": [],
+        "viewer": {
+          "blockedBy": false,
+          "followedBy": "record(7)",
+          "following": "record(6)",
+          "muted": false,
+          "mutedOnlyQuoteposts": false,
+          "mutedOnlyReposts": false,
+        },
+      },
+      "bookmarkCount": 0,
+      "cid": "cids(4)",
+      "embed": {
+        "$type": "app.bsky.embed.recordWithMedia#view",
+        "media": {
+          "$type": "app.bsky.embed.images#view",
+          "images": [
+            {
+              "alt": "../dev-env/assets/key-landscape-small.jpg",
+              "fullsize": "https://bsky.public.url/img/feed_fullsize/plain/user(5)/cids(5)",
+              "thumb": "https://bsky.public.url/img/feed_thumbnail/plain/user(5)/cids(5)",
+            },
+            {
+              "alt": "../dev-env/assets/key-alt.jpg",
+              "fullsize": "https://bsky.public.url/img/feed_fullsize/plain/user(5)/cids(6)",
+              "thumb": "https://bsky.public.url/img/feed_thumbnail/plain/user(5)/cids(6)",
+            },
+          ],
+        },
+        "record": {
+          "record": {
+            "$type": "app.bsky.embed.record#viewRecord",
+            "author": {
+              "associated": {
+                "activitySubscription": {
+                  "allowSubscriptions": "followers",
+                },
+              },
+              "avatar": "https://bsky.public.url/img/avatar/plain/user(3)/cids(1)",
+              "createdAt": "1970-01-01T00:00:00.000Z",
+              "did": "user(2)",
+              "displayName": "bobby",
+              "handle": "bob.test",
+              "labels": [],
+              "viewer": {
+                "blockedBy": false,
+                "followedBy": "record(4)",
+                "following": "record(3)",
+                "muted": false,
+                "mutedOnlyQuoteposts": false,
+                "mutedOnlyReposts": false,
+              },
+            },
+            "cid": "cids(3)",
+            "embeds": [],
+            "indexedAt": "1970-01-01T00:00:00.000Z",
+            "labels": [],
+            "likeCount": 0,
+            "quoteCount": 1,
+            "replyCount": 0,
+            "repostCount": 0,
+            "uri": "record(2)",
+            "value": {
+              "$type": "app.bsky.feed.post",
+              "createdAt": "1970-01-01T00:00:00.000Z",
+              "langs": [
+                "en-US",
+                "i-klingon",
+              ],
+              "text": "bob back at it again!",
+            },
+          },
+        },
+      },
+      "indexedAt": "1970-01-01T00:00:00.000Z",
+      "labels": [],
+      "likeCount": 2,
+      "quoteCount": 1,
+      "record": {
+        "$type": "app.bsky.feed.post",
+        "createdAt": "1970-01-01T00:00:00.000Z",
+        "embed": {
+          "$type": "app.bsky.embed.recordWithMedia",
+          "media": {
+            "$type": "app.bsky.embed.images",
+            "images": [
+              {
+                "alt": "../dev-env/assets/key-landscape-small.jpg",
+                "image": {
+                  "$type": "blob",
+                  "mimeType": "image/jpeg",
+                  "ref": {
+                    "$link": "cids(5)",
+                  },
+                  "size": 4114,
+                },
+              },
+              {
+                "alt": "../dev-env/assets/key-alt.jpg",
+                "image": {
+                  "$type": "blob",
+                  "mimeType": "image/jpeg",
+                  "ref": {
+                    "$link": "cids(6)",
+                  },
+                  "size": 12736,
+                },
+              },
+            ],
+          },
+          "record": {
+            "record": {
+              "cid": "cids(3)",
+              "uri": "record(2)",
+            },
+          },
+        },
+        "text": "hi im carol",
+      },
+      "replyCount": 0,
+      "repostCount": 0,
+      "uri": "record(5)",
+      "viewer": {
+        "bookmarked": false,
+        "embeddingDisabled": false,
+        "knownLikers": {
+          "actors": [
+            {
+              "associated": {
+                "activitySubscription": {
+                  "allowSubscriptions": "followers",
+                },
+              },
+              "avatar": "https://bsky.public.url/img/avatar/plain/user(3)/cids(1)",
+              "createdAt": "1970-01-01T00:00:00.000Z",
+              "did": "user(2)",
+              "displayName": "bobby",
+              "handle": "bob.test",
+              "labels": [],
+              "viewer": {
+                "blockedBy": false,
+                "followedBy": "record(4)",
+                "following": "record(3)",
+                "muted": false,
+                "mutedOnlyQuoteposts": false,
+                "mutedOnlyReposts": false,
+              },
+            },
+          ],
+          "count": 1,
+        },
+        "like": "record(8)",
+        "threadMuted": false,
+      },
+    },
+    "reqId": "req-id-abc-def-ghi",
+  },
+  {
+    "feedContext": "item-4",
+    "post": {
+      "author": {
+        "associated": {
+          "activitySubscription": {
+            "allowSubscriptions": "followers",
+          },
+        },
+        "did": "user(4)",
+        "handle": "carol.test",
+        "labels": [],
+        "viewer": {
+          "blockedBy": false,
+          "followedBy": "record(7)",
+          "following": "record(6)",
+          "muted": false,
+          "mutedOnlyQuoteposts": false,
+          "mutedOnlyReposts": false,
+        },
+      },
+      "bookmarkCount": 0,
+      "cid": "cids(7)",
+      "indexedAt": "1970-01-01T00:00:00.000Z",
+      "labels": [],
+      "likeCount": 0,
+      "quoteCount": 0,
+      "record": {
+        "$type": "app.bsky.feed.post",
+        "createdAt": "1970-01-01T00:00:00.000Z",
+        "reply": {
+          "parent": {
+            "cid": "cids(8)",
+            "uri": "record(10)",
+          },
+          "root": {
+            "cid": "cids(8)",
+            "uri": "record(10)",
+          },
+        },
+        "text": "of course",
+      },
+      "replyCount": 0,
+      "repostCount": 0,
+      "uri": "record(9)",
+      "viewer": {
+        "bookmarked": false,
+        "embeddingDisabled": false,
+        "threadMuted": false,
+      },
+    },
+    "reply": {
+      "parent": {
+        "$type": "app.bsky.feed.defs#postView",
+        "author": {
+          "associated": {
+            "activitySubscription": {
+              "allowSubscriptions": "followers",
+            },
+          },
+          "avatar": "https://bsky.public.url/img/avatar/plain/user(1)/cids(1)",
+          "createdAt": "1970-01-01T00:00:00.000Z",
+          "did": "user(0)",
+          "displayName": "ali",
+          "handle": "alice.test",
+          "labels": [
+            {
+              "cid": "cids(2)",
+              "cts": "1970-01-01T00:00:00.000Z",
+              "src": "user(0)",
+              "uri": "record(1)",
+              "val": "self-label-a",
+            },
+            {
+              "cid": "cids(2)",
+              "cts": "1970-01-01T00:00:00.000Z",
+              "src": "user(0)",
+              "uri": "record(1)",
+              "val": "self-label-b",
+            },
+          ],
+          "viewer": {
+            "blockedBy": false,
+            "muted": false,
+            "mutedOnlyQuoteposts": false,
+            "mutedOnlyReposts": false,
+          },
+        },
+        "bookmarkCount": 0,
+        "cid": "cids(8)",
+        "indexedAt": "1970-01-01T00:00:00.000Z",
+        "labels": [],
+        "likeCount": 3,
+        "quoteCount": 0,
+        "record": {
+          "$type": "app.bsky.feed.post",
+          "createdAt": "1970-01-01T00:00:00.000000Z",
+          "text": "again",
+        },
+        "replyCount": 2,
+        "repostCount": 1,
+        "uri": "record(10)",
+        "viewer": {
+          "bookmarked": false,
+          "embeddingDisabled": false,
+          "knownLikers": {
+            "actors": [
+              {
+                "associated": {
+                  "activitySubscription": {
+                    "allowSubscriptions": "followers",
+                  },
+                  "chat": {
+                    "allowIncoming": "none",
+                  },
+                },
+                "did": "user(6)",
+                "handle": "dan.test",
+                "labels": [],
+                "viewer": {
+                  "blockedBy": false,
+                  "following": "record(11)",
+                  "muted": false,
+                  "mutedOnlyQuoteposts": false,
+                  "mutedOnlyReposts": false,
+                },
+              },
+              {
+                "associated": {
+                  "activitySubscription": {
+                    "allowSubscriptions": "followers",
+                  },
+                },
+                "did": "user(4)",
+                "handle": "carol.test",
+                "labels": [],
+                "viewer": {
+                  "blockedBy": false,
+                  "followedBy": "record(7)",
+                  "following": "record(6)",
+                  "muted": false,
+                  "mutedOnlyQuoteposts": false,
+                  "mutedOnlyReposts": false,
+                },
+              },
+              {
+                "associated": {
+                  "activitySubscription": {
+                    "allowSubscriptions": "followers",
+                  },
+                },
+                "avatar": "https://bsky.public.url/img/avatar/plain/user(3)/cids(1)",
+                "createdAt": "1970-01-01T00:00:00.000Z",
+                "did": "user(2)",
+                "displayName": "bobby",
+                "handle": "bob.test",
+                "labels": [],
+                "viewer": {
+                  "blockedBy": false,
+                  "followedBy": "record(4)",
+                  "following": "record(3)",
+                  "muted": false,
+                  "mutedOnlyQuoteposts": false,
+                  "mutedOnlyReposts": false,
+                },
+              },
+            ],
+            "count": 3,
+          },
+          "threadMuted": false,
+        },
+      },
+      "root": {
+        "$type": "app.bsky.feed.defs#postView",
+        "author": {
+          "associated": {
+            "activitySubscription": {
+              "allowSubscriptions": "followers",
+            },
+          },
+          "avatar": "https://bsky.public.url/img/avatar/plain/user(1)/cids(1)",
+          "createdAt": "1970-01-01T00:00:00.000Z",
+          "did": "user(0)",
+          "displayName": "ali",
+          "handle": "alice.test",
+          "labels": [
+            {
+              "cid": "cids(2)",
+              "cts": "1970-01-01T00:00:00.000Z",
+              "src": "user(0)",
+              "uri": "record(1)",
+              "val": "self-label-a",
+            },
+            {
+              "cid": "cids(2)",
+              "cts": "1970-01-01T00:00:00.000Z",
+              "src": "user(0)",
+              "uri": "record(1)",
+              "val": "self-label-b",
+            },
+          ],
+          "viewer": {
+            "blockedBy": false,
+            "muted": false,
+            "mutedOnlyQuoteposts": false,
+            "mutedOnlyReposts": false,
+          },
+        },
+        "bookmarkCount": 0,
+        "cid": "cids(8)",
+        "indexedAt": "1970-01-01T00:00:00.000Z",
+        "labels": [],
+        "likeCount": 3,
+        "quoteCount": 0,
+        "record": {
+          "$type": "app.bsky.feed.post",
+          "createdAt": "1970-01-01T00:00:00.000000Z",
+          "text": "again",
+        },
+        "replyCount": 2,
+        "repostCount": 1,
+        "uri": "record(10)",
+        "viewer": {
+          "bookmarked": false,
+          "embeddingDisabled": false,
+          "knownLikers": {
+            "actors": [
+              {
+                "associated": {
+                  "activitySubscription": {
+                    "allowSubscriptions": "followers",
+                  },
+                  "chat": {
+                    "allowIncoming": "none",
+                  },
+                },
+                "did": "user(6)",
+                "handle": "dan.test",
+                "labels": [],
+                "viewer": {
+                  "blockedBy": false,
+                  "following": "record(11)",
+                  "muted": false,
+                  "mutedOnlyQuoteposts": false,
+                  "mutedOnlyReposts": false,
+                },
+              },
+              {
+                "associated": {
+                  "activitySubscription": {
+                    "allowSubscriptions": "followers",
+                  },
+                },
+                "did": "user(4)",
+                "handle": "carol.test",
+                "labels": [],
+                "viewer": {
+                  "blockedBy": false,
+                  "followedBy": "record(7)",
+                  "following": "record(6)",
+                  "muted": false,
+                  "mutedOnlyQuoteposts": false,
+                  "mutedOnlyReposts": false,
+                },
+              },
+              {
+                "associated": {
+                  "activitySubscription": {
+                    "allowSubscriptions": "followers",
+                  },
+                },
+                "avatar": "https://bsky.public.url/img/avatar/plain/user(3)/cids(1)",
+                "createdAt": "1970-01-01T00:00:00.000Z",
+                "did": "user(2)",
+                "displayName": "bobby",
+                "handle": "bob.test",
+                "labels": [],
+                "viewer": {
+                  "blockedBy": false,
+                  "followedBy": "record(4)",
+                  "following": "record(3)",
+                  "muted": false,
+                  "mutedOnlyQuoteposts": false,
+                  "mutedOnlyReposts": false,
+                },
+              },
+            ],
+            "count": 3,
+          },
+          "threadMuted": false,
+        },
+      },
+    },
+    "reqId": "req-id-abc-def-ghi",
+  },
+  {
+    "feedContext": "item-5",
+    "post": {
+      "author": {
+        "associated": {
+          "activitySubscription": {
+            "allowSubscriptions": "followers",
+          },
+          "chat": {
+            "allowIncoming": "none",
+          },
+        },
+        "did": "user(6)",
+        "handle": "dan.test",
+        "labels": [],
+        "viewer": {
+          "blockedBy": false,
+          "following": "record(11)",
+          "muted": false,
+          "mutedOnlyQuoteposts": false,
+          "mutedOnlyReposts": false,
+        },
+      },
+      "bookmarkCount": 0,
+      "cid": "cids(9)",
+      "embed": {
+        "$type": "app.bsky.embed.record#view",
+        "record": {
+          "$type": "app.bsky.embed.record#viewRecord",
+          "author": {
+            "associated": {
+              "activitySubscription": {
+                "allowSubscriptions": "followers",
+              },
+            },
+            "did": "user(4)",
+            "handle": "carol.test",
+            "labels": [],
+            "viewer": {
+              "blockedBy": false,
+              "followedBy": "record(7)",
+              "following": "record(6)",
+              "muted": false,
+              "mutedOnlyQuoteposts": false,
+              "mutedOnlyReposts": false,
+            },
+          },
+          "cid": "cids(4)",
+          "embeds": [
+            {
+              "$type": "app.bsky.embed.recordWithMedia#view",
+              "media": {
+                "$type": "app.bsky.embed.images#view",
+                "images": [
+                  {
+                    "alt": "../dev-env/assets/key-landscape-small.jpg",
+                    "fullsize": "https://bsky.public.url/img/feed_fullsize/plain/user(5)/cids(5)",
+                    "thumb": "https://bsky.public.url/img/feed_thumbnail/plain/user(5)/cids(5)",
+                  },
+                  {
+                    "alt": "../dev-env/assets/key-alt.jpg",
+                    "fullsize": "https://bsky.public.url/img/feed_fullsize/plain/user(5)/cids(6)",
+                    "thumb": "https://bsky.public.url/img/feed_thumbnail/plain/user(5)/cids(6)",
+                  },
+                ],
+              },
+              "record": {
+                "record": {
+                  "$type": "app.bsky.embed.record#viewRecord",
+                  "author": {
+                    "associated": {
+                      "activitySubscription": {
+                        "allowSubscriptions": "followers",
+                      },
+                    },
+                    "avatar": "https://bsky.public.url/img/avatar/plain/user(3)/cids(1)",
+                    "createdAt": "1970-01-01T00:00:00.000Z",
+                    "did": "user(2)",
+                    "displayName": "bobby",
+                    "handle": "bob.test",
+                    "labels": [],
+                    "viewer": {
+                      "blockedBy": false,
+                      "followedBy": "record(4)",
+                      "following": "record(3)",
+                      "muted": false,
+                      "mutedOnlyQuoteposts": false,
+                      "mutedOnlyReposts": false,
+                    },
+                  },
+                  "cid": "cids(3)",
+                  "indexedAt": "1970-01-01T00:00:00.000Z",
+                  "labels": [],
+                  "likeCount": 0,
+                  "quoteCount": 1,
+                  "replyCount": 0,
+                  "repostCount": 0,
+                  "uri": "record(2)",
+                  "value": {
+                    "$type": "app.bsky.feed.post",
+                    "createdAt": "1970-01-01T00:00:00.000Z",
+                    "langs": [
+                      "en-US",
+                      "i-klingon",
+                    ],
+                    "text": "bob back at it again!",
+                  },
+                },
+              },
+            },
+          ],
+          "indexedAt": "1970-01-01T00:00:00.000Z",
+          "labels": [],
+          "likeCount": 2,
+          "quoteCount": 1,
+          "replyCount": 0,
+          "repostCount": 0,
+          "uri": "record(5)",
+          "value": {
+            "$type": "app.bsky.feed.post",
+            "createdAt": "1970-01-01T00:00:00.000Z",
+            "embed": {
+              "$type": "app.bsky.embed.recordWithMedia",
+              "media": {
+                "$type": "app.bsky.embed.images",
+                "images": [
+                  {
+                    "alt": "../dev-env/assets/key-landscape-small.jpg",
+                    "image": {
+                      "$type": "blob",
+                      "mimeType": "image/jpeg",
+                      "ref": {
+                        "$link": "cids(5)",
+                      },
+                      "size": 4114,
+                    },
+                  },
+                  {
+                    "alt": "../dev-env/assets/key-alt.jpg",
+                    "image": {
+                      "$type": "blob",
+                      "mimeType": "image/jpeg",
+                      "ref": {
+                        "$link": "cids(6)",
+                      },
+                      "size": 12736,
+                    },
+                  },
+                ],
+              },
+              "record": {
+                "record": {
+                  "cid": "cids(3)",
+                  "uri": "record(2)",
+                },
+              },
+            },
+            "text": "hi im carol",
+          },
+        },
+      },
+      "indexedAt": "1970-01-01T00:00:00.000Z",
+      "labels": [],
+      "likeCount": 0,
+      "quoteCount": 1,
+      "record": {
+        "$type": "app.bsky.feed.post",
+        "createdAt": "1970-01-01T00:00:00.000Z",
+        "embed": {
+          "$type": "app.bsky.embed.record",
+          "record": {
+            "cid": "cids(4)",
+            "uri": "record(5)",
+          },
+        },
+        "facets": [
+          {
+            "features": [
+              {
+                "$type": "app.bsky.richtext.facet#mention",
+                "did": "user(0)",
+              },
+            ],
+            "index": {
+              "byteEnd": 18,
+              "byteStart": 0,
+            },
+          },
+        ],
+        "text": "@alice.bluesky.xyz is the best",
+      },
+      "replyCount": 0,
+      "repostCount": 1,
+      "uri": "record(12)",
+      "viewer": {
+        "bookmarked": false,
+        "embeddingDisabled": false,
+        "threadMuted": false,
+      },
+    },
+    "reason": {
+      "$type": "app.bsky.feed.defs#reasonRepost",
+      "by": {
+        "associated": {
+          "activitySubscription": {
+            "allowSubscriptions": "followers",
+          },
+        },
+        "did": "user(4)",
+        "handle": "carol.test",
+        "labels": [],
+        "viewer": {
+          "blockedBy": false,
+          "followedBy": "record(7)",
+          "following": "record(6)",
+          "muted": false,
+          "mutedOnlyQuoteposts": false,
+          "mutedOnlyReposts": false,
+        },
+      },
+      "cid": "cids(10)",
+      "indexedAt": "1970-01-01T00:00:00.000Z",
+      "uri": "record(13)",
+    },
+    "reqId": "req-id-abc-def-ghi",
+  },
+]
+`;
+
+exports[`feed generation > getFeed > resolves basic feed contents without auth. 1`] = `
+[
+  {
+    "feedContext": "item-0",
+    "post": {
+      "author": {
+        "associated": {
+          "activitySubscription": {
+            "allowSubscriptions": "followers",
+          },
+        },
+        "avatar": "https://bsky.public.url/img/avatar/plain/user(1)/cids(1)",
+        "createdAt": "1970-01-01T00:00:00.000Z",
+        "did": "user(0)",
+        "displayName": "ali",
+        "handle": "alice.test",
+        "labels": [
+          {
+            "cid": "cids(2)",
+            "cts": "1970-01-01T00:00:00.000Z",
+            "src": "user(0)",
+            "uri": "record(1)",
+            "val": "self-label-a",
+          },
+          {
+            "cid": "cids(2)",
+            "cts": "1970-01-01T00:00:00.000Z",
+            "src": "user(0)",
+            "uri": "record(1)",
+            "val": "self-label-b",
+          },
+        ],
+      },
+      "bookmarkCount": 0,
+      "cid": "cids(0)",
+      "indexedAt": "1970-01-01T00:00:00.000Z",
+      "labels": [
+        {
+          "cid": "cids(0)",
+          "cts": "1970-01-01T00:00:00.000Z",
+          "src": "user(0)",
+          "uri": "record(0)",
+          "val": "self-label",
+        },
+      ],
+      "likeCount": 0,
+      "quoteCount": 0,
+      "record": {
+        "$type": "app.bsky.feed.post",
+        "createdAt": "1970-01-01T00:00:00.000Z",
+        "labels": {
+          "$type": "com.atproto.label.defs#selfLabels",
+          "values": [
+            {
+              "val": "self-label",
+            },
+          ],
+        },
+        "text": "hey there",
+      },
+      "replyCount": 0,
+      "repostCount": 0,
+      "uri": "record(0)",
+    },
+    "reqId": "req-id-abc-def-ghi",
+  },
+  {
+    "feedContext": "item-2",
+    "post": {
+      "author": {
+        "associated": {
+          "activitySubscription": {
+            "allowSubscriptions": "followers",
+          },
+        },
+        "did": "user(2)",
+        "handle": "carol.test",
+        "labels": [],
+      },
+      "bookmarkCount": 0,
+      "cid": "cids(3)",
+      "embed": {
+        "$type": "app.bsky.embed.recordWithMedia#view",
+        "media": {
+          "$type": "app.bsky.embed.images#view",
+          "images": [
+            {
+              "alt": "../dev-env/assets/key-landscape-small.jpg",
+              "fullsize": "https://bsky.public.url/img/feed_fullsize/plain/user(3)/cids(4)",
+              "thumb": "https://bsky.public.url/img/feed_thumbnail/plain/user(3)/cids(4)",
+            },
+            {
+              "alt": "../dev-env/assets/key-alt.jpg",
+              "fullsize": "https://bsky.public.url/img/feed_fullsize/plain/user(3)/cids(5)",
+              "thumb": "https://bsky.public.url/img/feed_thumbnail/plain/user(3)/cids(5)",
+            },
+          ],
+        },
+        "record": {
+          "record": {
+            "$type": "app.bsky.embed.record#viewRecord",
+            "author": {
+              "associated": {
+                "activitySubscription": {
+                  "allowSubscriptions": "followers",
+                },
+              },
+              "avatar": "https://bsky.public.url/img/avatar/plain/user(5)/cids(1)",
+              "createdAt": "1970-01-01T00:00:00.000Z",
+              "did": "user(4)",
+              "displayName": "bobby",
+              "handle": "bob.test",
+              "labels": [],
+            },
+            "cid": "cids(6)",
+            "embeds": [],
+            "indexedAt": "1970-01-01T00:00:00.000Z",
+            "labels": [],
+            "likeCount": 0,
+            "quoteCount": 1,
+            "replyCount": 0,
+            "repostCount": 0,
+            "uri": "record(3)",
+            "value": {
+              "$type": "app.bsky.feed.post",
+              "createdAt": "1970-01-01T00:00:00.000Z",
+              "langs": [
+                "en-US",
+                "i-klingon",
+              ],
+              "text": "bob back at it again!",
+            },
+          },
+        },
+      },
+      "indexedAt": "1970-01-01T00:00:00.000Z",
+      "labels": [],
+      "likeCount": 2,
+      "quoteCount": 1,
+      "record": {
+        "$type": "app.bsky.feed.post",
+        "createdAt": "1970-01-01T00:00:00.000Z",
+        "embed": {
+          "$type": "app.bsky.embed.recordWithMedia",
+          "media": {
+            "$type": "app.bsky.embed.images",
+            "images": [
+              {
+                "alt": "../dev-env/assets/key-landscape-small.jpg",
+                "image": {
+                  "$type": "blob",
+                  "mimeType": "image/jpeg",
+                  "ref": {
+                    "$link": "cids(4)",
+                  },
+                  "size": 4114,
+                },
+              },
+              {
+                "alt": "../dev-env/assets/key-alt.jpg",
+                "image": {
+                  "$type": "blob",
+                  "mimeType": "image/jpeg",
+                  "ref": {
+                    "$link": "cids(5)",
+                  },
+                  "size": 12736,
+                },
+              },
+            ],
+          },
+          "record": {
+            "record": {
+              "cid": "cids(6)",
+              "uri": "record(3)",
+            },
+          },
+        },
+        "text": "hi im carol",
+      },
+      "replyCount": 0,
+      "repostCount": 0,
+      "uri": "record(2)",
+    },
+    "reqId": "req-id-abc-def-ghi",
+  },
+  {
+    "feedContext": "item-4",
+    "post": {
+      "author": {
+        "associated": {
+          "activitySubscription": {
+            "allowSubscriptions": "followers",
+          },
+        },
+        "did": "user(2)",
+        "handle": "carol.test",
+        "labels": [],
+      },
+      "bookmarkCount": 0,
+      "cid": "cids(7)",
+      "indexedAt": "1970-01-01T00:00:00.000Z",
+      "labels": [],
+      "likeCount": 0,
+      "quoteCount": 0,
+      "record": {
+        "$type": "app.bsky.feed.post",
+        "createdAt": "1970-01-01T00:00:00.000Z",
+        "reply": {
+          "parent": {
+            "cid": "cids(8)",
+            "uri": "record(5)",
+          },
+          "root": {
+            "cid": "cids(8)",
+            "uri": "record(5)",
+          },
+        },
+        "text": "of course",
+      },
+      "replyCount": 0,
+      "repostCount": 0,
+      "uri": "record(4)",
+    },
+    "reply": {
+      "parent": {
+        "$type": "app.bsky.feed.defs#postView",
+        "author": {
+          "associated": {
+            "activitySubscription": {
+              "allowSubscriptions": "followers",
+            },
+          },
+          "avatar": "https://bsky.public.url/img/avatar/plain/user(1)/cids(1)",
+          "createdAt": "1970-01-01T00:00:00.000Z",
+          "did": "user(0)",
+          "displayName": "ali",
+          "handle": "alice.test",
+          "labels": [
+            {
+              "cid": "cids(2)",
+              "cts": "1970-01-01T00:00:00.000Z",
+              "src": "user(0)",
+              "uri": "record(1)",
+              "val": "self-label-a",
+            },
+            {
+              "cid": "cids(2)",
+              "cts": "1970-01-01T00:00:00.000Z",
+              "src": "user(0)",
+              "uri": "record(1)",
+              "val": "self-label-b",
+            },
+          ],
+        },
+        "bookmarkCount": 0,
+        "cid": "cids(8)",
+        "indexedAt": "1970-01-01T00:00:00.000Z",
+        "labels": [],
+        "likeCount": 3,
+        "quoteCount": 0,
+        "record": {
+          "$type": "app.bsky.feed.post",
+          "createdAt": "1970-01-01T00:00:00.000000Z",
+          "text": "again",
+        },
+        "replyCount": 2,
+        "repostCount": 1,
+        "uri": "record(5)",
+      },
+      "root": {
+        "$type": "app.bsky.feed.defs#postView",
+        "author": {
+          "associated": {
+            "activitySubscription": {
+              "allowSubscriptions": "followers",
+            },
+          },
+          "avatar": "https://bsky.public.url/img/avatar/plain/user(1)/cids(1)",
+          "createdAt": "1970-01-01T00:00:00.000Z",
+          "did": "user(0)",
+          "displayName": "ali",
+          "handle": "alice.test",
+          "labels": [
+            {
+              "cid": "cids(2)",
+              "cts": "1970-01-01T00:00:00.000Z",
+              "src": "user(0)",
+              "uri": "record(1)",
+              "val": "self-label-a",
+            },
+            {
+              "cid": "cids(2)",
+              "cts": "1970-01-01T00:00:00.000Z",
+              "src": "user(0)",
+              "uri": "record(1)",
+              "val": "self-label-b",
+            },
+          ],
+        },
+        "bookmarkCount": 0,
+        "cid": "cids(8)",
+        "indexedAt": "1970-01-01T00:00:00.000Z",
+        "labels": [],
+        "likeCount": 3,
+        "quoteCount": 0,
+        "record": {
+          "$type": "app.bsky.feed.post",
+          "createdAt": "1970-01-01T00:00:00.000000Z",
+          "text": "again",
+        },
+        "replyCount": 2,
+        "repostCount": 1,
+        "uri": "record(5)",
+      },
+    },
+    "reqId": "req-id-abc-def-ghi",
+  },
+]
+`;
+
+exports[`feed generation > getFeed > resolves basic feed contents. 1`] = `
+[
+  {
+    "feedContext": "item-0",
+    "post": {
+      "author": {
+        "associated": {
+          "activitySubscription": {
+            "allowSubscriptions": "followers",
+          },
+        },
+        "avatar": "https://bsky.public.url/img/avatar/plain/user(1)/cids(1)",
+        "createdAt": "1970-01-01T00:00:00.000Z",
+        "did": "user(0)",
+        "displayName": "ali",
+        "handle": "alice.test",
+        "labels": [
+          {
+            "cid": "cids(2)",
+            "cts": "1970-01-01T00:00:00.000Z",
+            "src": "user(0)",
+            "uri": "record(1)",
+            "val": "self-label-a",
+          },
+          {
+            "cid": "cids(2)",
+            "cts": "1970-01-01T00:00:00.000Z",
+            "src": "user(0)",
+            "uri": "record(1)",
+            "val": "self-label-b",
+          },
+        ],
+        "viewer": {
+          "blockedBy": false,
+          "muted": false,
+          "mutedOnlyQuoteposts": false,
+          "mutedOnlyReposts": false,
+        },
+      },
+      "bookmarkCount": 0,
+      "cid": "cids(0)",
+      "indexedAt": "1970-01-01T00:00:00.000Z",
+      "labels": [
+        {
+          "cid": "cids(0)",
+          "cts": "1970-01-01T00:00:00.000Z",
+          "src": "user(0)",
+          "uri": "record(0)",
+          "val": "self-label",
+        },
+      ],
+      "likeCount": 0,
+      "quoteCount": 0,
+      "record": {
+        "$type": "app.bsky.feed.post",
+        "createdAt": "1970-01-01T00:00:00.000Z",
+        "labels": {
+          "$type": "com.atproto.label.defs#selfLabels",
+          "values": [
+            {
+              "val": "self-label",
+            },
+          ],
+        },
+        "text": "hey there",
+      },
+      "replyCount": 0,
+      "repostCount": 0,
+      "uri": "record(0)",
+      "viewer": {
+        "bookmarked": false,
+        "embeddingDisabled": false,
+        "threadMuted": false,
+      },
+    },
+    "reqId": "req-id-abc-def-ghi",
+  },
+  {
+    "feedContext": "item-2",
+    "post": {
+      "author": {
+        "associated": {
+          "activitySubscription": {
+            "allowSubscriptions": "followers",
+          },
+        },
+        "did": "user(2)",
+        "handle": "carol.test",
+        "labels": [],
+        "viewer": {
+          "blockedBy": false,
+          "followedBy": "record(4)",
+          "following": "record(3)",
+          "muted": false,
+          "mutedOnlyQuoteposts": false,
+          "mutedOnlyReposts": false,
+        },
+      },
+      "bookmarkCount": 0,
+      "cid": "cids(3)",
+      "embed": {
+        "$type": "app.bsky.embed.recordWithMedia#view",
+        "media": {
+          "$type": "app.bsky.embed.images#view",
+          "images": [
+            {
+              "alt": "../dev-env/assets/key-landscape-small.jpg",
+              "fullsize": "https://bsky.public.url/img/feed_fullsize/plain/user(3)/cids(4)",
+              "thumb": "https://bsky.public.url/img/feed_thumbnail/plain/user(3)/cids(4)",
+            },
+            {
+              "alt": "../dev-env/assets/key-alt.jpg",
+              "fullsize": "https://bsky.public.url/img/feed_fullsize/plain/user(3)/cids(5)",
+              "thumb": "https://bsky.public.url/img/feed_thumbnail/plain/user(3)/cids(5)",
+            },
+          ],
+        },
+        "record": {
+          "record": {
+            "$type": "app.bsky.embed.record#viewRecord",
+            "author": {
+              "associated": {
+                "activitySubscription": {
+                  "allowSubscriptions": "followers",
+                },
+              },
+              "avatar": "https://bsky.public.url/img/avatar/plain/user(5)/cids(1)",
+              "createdAt": "1970-01-01T00:00:00.000Z",
+              "did": "user(4)",
+              "displayName": "bobby",
+              "handle": "bob.test",
+              "labels": [],
+              "viewer": {
+                "blockedBy": false,
+                "followedBy": "record(7)",
+                "following": "record(6)",
+                "muted": false,
+                "mutedOnlyQuoteposts": false,
+                "mutedOnlyReposts": false,
+              },
+            },
+            "cid": "cids(6)",
+            "embeds": [],
+            "indexedAt": "1970-01-01T00:00:00.000Z",
+            "labels": [],
+            "likeCount": 0,
+            "quoteCount": 1,
+            "replyCount": 0,
+            "repostCount": 0,
+            "uri": "record(5)",
+            "value": {
+              "$type": "app.bsky.feed.post",
+              "createdAt": "1970-01-01T00:00:00.000Z",
+              "langs": [
+                "en-US",
+                "i-klingon",
+              ],
+              "text": "bob back at it again!",
+            },
+          },
+        },
+      },
+      "indexedAt": "1970-01-01T00:00:00.000Z",
+      "labels": [],
+      "likeCount": 2,
+      "quoteCount": 1,
+      "record": {
+        "$type": "app.bsky.feed.post",
+        "createdAt": "1970-01-01T00:00:00.000Z",
+        "embed": {
+          "$type": "app.bsky.embed.recordWithMedia",
+          "media": {
+            "$type": "app.bsky.embed.images",
+            "images": [
+              {
+                "alt": "../dev-env/assets/key-landscape-small.jpg",
+                "image": {
+                  "$type": "blob",
+                  "mimeType": "image/jpeg",
+                  "ref": {
+                    "$link": "cids(4)",
+                  },
+                  "size": 4114,
+                },
+              },
+              {
+                "alt": "../dev-env/assets/key-alt.jpg",
+                "image": {
+                  "$type": "blob",
+                  "mimeType": "image/jpeg",
+                  "ref": {
+                    "$link": "cids(5)",
+                  },
+                  "size": 12736,
+                },
+              },
+            ],
+          },
+          "record": {
+            "record": {
+              "cid": "cids(6)",
+              "uri": "record(5)",
+            },
+          },
+        },
+        "text": "hi im carol",
+      },
+      "replyCount": 0,
+      "repostCount": 0,
+      "uri": "record(2)",
+      "viewer": {
+        "bookmarked": false,
+        "embeddingDisabled": false,
+        "knownLikers": {
+          "actors": [
+            {
+              "associated": {
+                "activitySubscription": {
+                  "allowSubscriptions": "followers",
+                },
+              },
+              "avatar": "https://bsky.public.url/img/avatar/plain/user(5)/cids(1)",
+              "createdAt": "1970-01-01T00:00:00.000Z",
+              "did": "user(4)",
+              "displayName": "bobby",
+              "handle": "bob.test",
+              "labels": [],
+              "viewer": {
+                "blockedBy": false,
+                "followedBy": "record(7)",
+                "following": "record(6)",
+                "muted": false,
+                "mutedOnlyQuoteposts": false,
+                "mutedOnlyReposts": false,
+              },
+            },
+          ],
+          "count": 1,
+        },
+        "like": "record(8)",
+        "threadMuted": false,
+      },
+    },
+    "reqId": "req-id-abc-def-ghi",
+  },
+  {
+    "feedContext": "item-4",
+    "post": {
+      "author": {
+        "associated": {
+          "activitySubscription": {
+            "allowSubscriptions": "followers",
+          },
+        },
+        "did": "user(2)",
+        "handle": "carol.test",
+        "labels": [],
+        "viewer": {
+          "blockedBy": false,
+          "followedBy": "record(4)",
+          "following": "record(3)",
+          "muted": false,
+          "mutedOnlyQuoteposts": false,
+          "mutedOnlyReposts": false,
+        },
+      },
+      "bookmarkCount": 0,
+      "cid": "cids(7)",
+      "indexedAt": "1970-01-01T00:00:00.000Z",
+      "labels": [],
+      "likeCount": 0,
+      "quoteCount": 0,
+      "record": {
+        "$type": "app.bsky.feed.post",
+        "createdAt": "1970-01-01T00:00:00.000Z",
+        "reply": {
+          "parent": {
+            "cid": "cids(8)",
+            "uri": "record(10)",
+          },
+          "root": {
+            "cid": "cids(8)",
+            "uri": "record(10)",
+          },
+        },
+        "text": "of course",
+      },
+      "replyCount": 0,
+      "repostCount": 0,
+      "uri": "record(9)",
+      "viewer": {
+        "bookmarked": false,
+        "embeddingDisabled": false,
+        "threadMuted": false,
+      },
+    },
+    "reply": {
+      "parent": {
+        "$type": "app.bsky.feed.defs#postView",
+        "author": {
+          "associated": {
+            "activitySubscription": {
+              "allowSubscriptions": "followers",
+            },
+          },
+          "avatar": "https://bsky.public.url/img/avatar/plain/user(1)/cids(1)",
+          "createdAt": "1970-01-01T00:00:00.000Z",
+          "did": "user(0)",
+          "displayName": "ali",
+          "handle": "alice.test",
+          "labels": [
+            {
+              "cid": "cids(2)",
+              "cts": "1970-01-01T00:00:00.000Z",
+              "src": "user(0)",
+              "uri": "record(1)",
+              "val": "self-label-a",
+            },
+            {
+              "cid": "cids(2)",
+              "cts": "1970-01-01T00:00:00.000Z",
+              "src": "user(0)",
+              "uri": "record(1)",
+              "val": "self-label-b",
+            },
+          ],
+          "viewer": {
+            "blockedBy": false,
+            "muted": false,
+            "mutedOnlyQuoteposts": false,
+            "mutedOnlyReposts": false,
+          },
+        },
+        "bookmarkCount": 0,
+        "cid": "cids(8)",
+        "indexedAt": "1970-01-01T00:00:00.000Z",
+        "labels": [],
+        "likeCount": 3,
+        "quoteCount": 0,
+        "record": {
+          "$type": "app.bsky.feed.post",
+          "createdAt": "1970-01-01T00:00:00.000000Z",
+          "text": "again",
+        },
+        "replyCount": 2,
+        "repostCount": 1,
+        "uri": "record(10)",
+        "viewer": {
+          "bookmarked": false,
+          "embeddingDisabled": false,
+          "knownLikers": {
+            "actors": [
+              {
+                "associated": {
+                  "activitySubscription": {
+                    "allowSubscriptions": "followers",
+                  },
+                  "chat": {
+                    "allowIncoming": "none",
+                  },
+                },
+                "did": "user(6)",
+                "handle": "dan.test",
+                "labels": [],
+                "viewer": {
+                  "blockedBy": false,
+                  "following": "record(11)",
+                  "muted": false,
+                  "mutedOnlyQuoteposts": false,
+                  "mutedOnlyReposts": false,
+                },
+              },
+              {
+                "associated": {
+                  "activitySubscription": {
+                    "allowSubscriptions": "followers",
+                  },
+                },
+                "did": "user(2)",
+                "handle": "carol.test",
+                "labels": [],
+                "viewer": {
+                  "blockedBy": false,
+                  "followedBy": "record(4)",
+                  "following": "record(3)",
+                  "muted": false,
+                  "mutedOnlyQuoteposts": false,
+                  "mutedOnlyReposts": false,
+                },
+              },
+              {
+                "associated": {
+                  "activitySubscription": {
+                    "allowSubscriptions": "followers",
+                  },
+                },
+                "avatar": "https://bsky.public.url/img/avatar/plain/user(5)/cids(1)",
+                "createdAt": "1970-01-01T00:00:00.000Z",
+                "did": "user(4)",
+                "displayName": "bobby",
+                "handle": "bob.test",
+                "labels": [],
+                "viewer": {
+                  "blockedBy": false,
+                  "followedBy": "record(7)",
+                  "following": "record(6)",
+                  "muted": false,
+                  "mutedOnlyQuoteposts": false,
+                  "mutedOnlyReposts": false,
+                },
+              },
+            ],
+            "count": 3,
+          },
+          "threadMuted": false,
+        },
+      },
+      "root": {
+        "$type": "app.bsky.feed.defs#postView",
+        "author": {
+          "associated": {
+            "activitySubscription": {
+              "allowSubscriptions": "followers",
+            },
+          },
+          "avatar": "https://bsky.public.url/img/avatar/plain/user(1)/cids(1)",
+          "createdAt": "1970-01-01T00:00:00.000Z",
+          "did": "user(0)",
+          "displayName": "ali",
+          "handle": "alice.test",
+          "labels": [
+            {
+              "cid": "cids(2)",
+              "cts": "1970-01-01T00:00:00.000Z",
+              "src": "user(0)",
+              "uri": "record(1)",
+              "val": "self-label-a",
+            },
+            {
+              "cid": "cids(2)",
+              "cts": "1970-01-01T00:00:00.000Z",
+              "src": "user(0)",
+              "uri": "record(1)",
+              "val": "self-label-b",
+            },
+          ],
+          "viewer": {
+            "blockedBy": false,
+            "muted": false,
+            "mutedOnlyQuoteposts": false,
+            "mutedOnlyReposts": false,
+          },
+        },
+        "bookmarkCount": 0,
+        "cid": "cids(8)",
+        "indexedAt": "1970-01-01T00:00:00.000Z",
+        "labels": [],
+        "likeCount": 3,
+        "quoteCount": 0,
+        "record": {
+          "$type": "app.bsky.feed.post",
+          "createdAt": "1970-01-01T00:00:00.000000Z",
+          "text": "again",
+        },
+        "replyCount": 2,
+        "repostCount": 1,
+        "uri": "record(10)",
+        "viewer": {
+          "bookmarked": false,
+          "embeddingDisabled": false,
+          "knownLikers": {
+            "actors": [
+              {
+                "associated": {
+                  "activitySubscription": {
+                    "allowSubscriptions": "followers",
+                  },
+                  "chat": {
+                    "allowIncoming": "none",
+                  },
+                },
+                "did": "user(6)",
+                "handle": "dan.test",
+                "labels": [],
+                "viewer": {
+                  "blockedBy": false,
+                  "following": "record(11)",
+                  "muted": false,
+                  "mutedOnlyQuoteposts": false,
+                  "mutedOnlyReposts": false,
+                },
+              },
+              {
+                "associated": {
+                  "activitySubscription": {
+                    "allowSubscriptions": "followers",
+                  },
+                },
+                "did": "user(2)",
+                "handle": "carol.test",
+                "labels": [],
+                "viewer": {
+                  "blockedBy": false,
+                  "followedBy": "record(4)",
+                  "following": "record(3)",
+                  "muted": false,
+                  "mutedOnlyQuoteposts": false,
+                  "mutedOnlyReposts": false,
+                },
+              },
+              {
+                "associated": {
+                  "activitySubscription": {
+                    "allowSubscriptions": "followers",
+                  },
+                },
+                "avatar": "https://bsky.public.url/img/avatar/plain/user(5)/cids(1)",
+                "createdAt": "1970-01-01T00:00:00.000Z",
+                "did": "user(4)",
+                "displayName": "bobby",
+                "handle": "bob.test",
+                "labels": [],
+                "viewer": {
+                  "blockedBy": false,
+                  "followedBy": "record(7)",
+                  "following": "record(6)",
+                  "muted": false,
+                  "mutedOnlyQuoteposts": false,
+                  "mutedOnlyReposts": false,
+                },
+              },
+            ],
+            "count": 3,
+          },
+          "threadMuted": false,
+        },
+      },
+    },
+    "reqId": "req-id-abc-def-ghi",
+  },
+]
+`;
+
+exports[`feed generation > getFeedGenerator > describes a feed gen & returns acceptsInteractions when true 1`] = `
+{
+  "isOnline": true,
+  "isValid": true,
+  "view": {
+    "acceptsInteractions": true,
+    "cid": "cids(0)",
+    "creator": {
+      "associated": {
+        "activitySubscription": {
+          "allowSubscriptions": "followers",
+        },
+      },
+      "avatar": "https://bsky.public.url/img/avatar/plain/user(2)/cids(1)",
+      "createdAt": "1970-01-01T00:00:00.000Z",
+      "description": "its me!",
+      "did": "user(1)",
+      "displayName": "ali",
+      "handle": "alice.test",
+      "indexedAt": "1970-01-01T00:00:00.000Z",
+      "labels": [
+        {
+          "cid": "cids(2)",
+          "cts": "1970-01-01T00:00:00.000Z",
+          "src": "user(1)",
+          "uri": "record(3)",
+          "val": "self-label-a",
+        },
+        {
+          "cid": "cids(2)",
+          "cts": "1970-01-01T00:00:00.000Z",
+          "src": "user(1)",
+          "uri": "record(3)",
+          "val": "self-label-b",
+        },
+      ],
+      "viewer": {
+        "blockedBy": false,
+        "followedBy": "record(2)",
+        "following": "record(1)",
+        "muted": false,
+        "mutedOnlyQuoteposts": false,
+        "mutedOnlyReposts": false,
+      },
+    },
+    "description": "Has acceptsInteractions set to true",
+    "did": "user(0)",
+    "displayName": "Accepts Interactions",
+    "indexedAt": "1970-01-01T00:00:00.000Z",
+    "labels": [],
+    "likeCount": 0,
+    "uri": "record(0)",
+    "viewer": {},
+  },
+}
+`;
+
+exports[`feed generation > getFeedGenerator > describes a feed gen & returns content mode 1`] = `
+{
+  "isOnline": true,
+  "isValid": true,
+  "view": {
+    "cid": "cids(0)",
+    "contentMode": "app.bsky.feed.defs#contentModeVideo",
+    "creator": {
+      "associated": {
+        "activitySubscription": {
+          "allowSubscriptions": "followers",
+        },
+      },
+      "avatar": "https://bsky.public.url/img/avatar/plain/user(2)/cids(1)",
+      "createdAt": "1970-01-01T00:00:00.000Z",
+      "description": "its me!",
+      "did": "user(1)",
+      "displayName": "ali",
+      "handle": "alice.test",
+      "indexedAt": "1970-01-01T00:00:00.000Z",
+      "labels": [
+        {
+          "cid": "cids(2)",
+          "cts": "1970-01-01T00:00:00.000Z",
+          "src": "user(1)",
+          "uri": "record(3)",
+          "val": "self-label-a",
+        },
+        {
+          "cid": "cids(2)",
+          "cts": "1970-01-01T00:00:00.000Z",
+          "src": "user(1)",
+          "uri": "record(3)",
+          "val": "self-label-b",
+        },
+      ],
+      "viewer": {
+        "blockedBy": false,
+        "followedBy": "record(2)",
+        "following": "record(1)",
+        "muted": false,
+        "mutedOnlyQuoteposts": false,
+        "mutedOnlyReposts": false,
+      },
+    },
+    "description": "Has a contentMode specified",
+    "did": "user(0)",
+    "displayName": "Content mode video",
+    "indexedAt": "1970-01-01T00:00:00.000Z",
+    "labels": [],
+    "likeCount": 0,
+    "uri": "record(0)",
+    "viewer": {},
+  },
+}
+`;
+
+exports[`feed generation > getFeedGenerator > describes a feed gen & returns online status 1`] = `
+{
+  "isOnline": true,
+  "isValid": true,
+  "view": {
+    "cid": "cids(0)",
+    "creator": {
+      "associated": {
+        "activitySubscription": {
+          "allowSubscriptions": "followers",
+        },
+      },
+      "avatar": "https://bsky.public.url/img/avatar/plain/user(2)/cids(1)",
+      "createdAt": "1970-01-01T00:00:00.000Z",
+      "description": "its me!",
+      "did": "user(1)",
+      "displayName": "ali",
+      "handle": "alice.test",
+      "indexedAt": "1970-01-01T00:00:00.000Z",
+      "labels": [
+        {
+          "cid": "cids(2)",
+          "cts": "1970-01-01T00:00:00.000Z",
+          "src": "user(1)",
+          "uri": "record(3)",
+          "val": "self-label-a",
+        },
+        {
+          "cid": "cids(2)",
+          "cts": "1970-01-01T00:00:00.000Z",
+          "src": "user(1)",
+          "uri": "record(3)",
+          "val": "self-label-b",
+        },
+      ],
+      "viewer": {
+        "blockedBy": false,
+        "followedBy": "record(2)",
+        "following": "record(1)",
+        "muted": false,
+        "mutedOnlyQuoteposts": false,
+        "mutedOnlyReposts": false,
+      },
+    },
+    "description": "Provides all feed candidates",
+    "did": "user(0)",
+    "displayName": "All",
+    "indexedAt": "1970-01-01T00:00:00.000Z",
+    "labels": [],
+    "likeCount": 2,
+    "uri": "record(0)",
+    "viewer": {
+      "like": "record(4)",
+    },
+  },
+}
+`;
+
+exports[`feed generation > getFeedGenerators > describes multiple feed gens 1`] = `
+{
+  "feeds": [
+    {
+      "cid": "cids(0)",
+      "creator": {
+        "associated": {
+          "activitySubscription": {
+            "allowSubscriptions": "followers",
+          },
+        },
+        "avatar": "https://bsky.public.url/img/avatar/plain/user(2)/cids(1)",
+        "createdAt": "1970-01-01T00:00:00.000Z",
+        "description": "its me!",
+        "did": "user(1)",
+        "displayName": "ali",
+        "handle": "alice.test",
+        "indexedAt": "1970-01-01T00:00:00.000Z",
+        "labels": [
+          {
+            "cid": "cids(2)",
+            "cts": "1970-01-01T00:00:00.000Z",
+            "src": "user(1)",
+            "uri": "record(3)",
+            "val": "self-label-a",
+          },
+          {
+            "cid": "cids(2)",
+            "cts": "1970-01-01T00:00:00.000Z",
+            "src": "user(1)",
+            "uri": "record(3)",
+            "val": "self-label-b",
+          },
+        ],
+        "viewer": {
+          "blockedBy": false,
+          "followedBy": "record(2)",
+          "following": "record(1)",
+          "muted": false,
+          "mutedOnlyQuoteposts": false,
+          "mutedOnlyReposts": false,
+        },
+      },
+      "description": "Provides even-indexed feed candidates",
+      "did": "user(0)",
+      "displayName": "Even",
+      "indexedAt": "1970-01-01T00:00:00.000Z",
+      "labels": [],
+      "likeCount": 0,
+      "uri": "record(0)",
+      "viewer": {},
+    },
+    {
+      "cid": "cids(3)",
+      "creator": {
+        "associated": {
+          "activitySubscription": {
+            "allowSubscriptions": "followers",
+          },
+        },
+        "avatar": "https://bsky.public.url/img/avatar/plain/user(2)/cids(1)",
+        "createdAt": "1970-01-01T00:00:00.000Z",
+        "description": "its me!",
+        "did": "user(1)",
+        "displayName": "ali",
+        "handle": "alice.test",
+        "indexedAt": "1970-01-01T00:00:00.000Z",
+        "labels": [
+          {
+            "cid": "cids(2)",
+            "cts": "1970-01-01T00:00:00.000Z",
+            "src": "user(1)",
+            "uri": "record(3)",
+            "val": "self-label-a",
+          },
+          {
+            "cid": "cids(2)",
+            "cts": "1970-01-01T00:00:00.000Z",
+            "src": "user(1)",
+            "uri": "record(3)",
+            "val": "self-label-b",
+          },
+        ],
+        "viewer": {
+          "blockedBy": false,
+          "followedBy": "record(2)",
+          "following": "record(1)",
+          "muted": false,
+          "mutedOnlyQuoteposts": false,
+          "mutedOnlyReposts": false,
+        },
+      },
+      "description": "Provides all feed candidates",
+      "did": "user(0)",
+      "displayName": "All",
+      "indexedAt": "1970-01-01T00:00:00.000Z",
+      "labels": [],
+      "likeCount": 2,
+      "uri": "record(4)",
+      "viewer": {
+        "like": "record(5)",
+      },
+    },
+  ],
+}
+`;
+
+exports[`feed generation > getSuggestedFeeds > returns list of suggested feed generators 1`] = `
+{
+  "feeds": [
+    {
+      "cid": "cids(0)",
+      "creator": {
+        "associated": {
+          "activitySubscription": {
+            "allowSubscriptions": "followers",
+          },
+        },
+        "avatar": "https://bsky.public.url/img/avatar/plain/user(2)/cids(1)",
+        "createdAt": "1970-01-01T00:00:00.000Z",
+        "description": "its me!",
+        "did": "user(1)",
+        "displayName": "ali",
+        "handle": "alice.test",
+        "indexedAt": "1970-01-01T00:00:00.000Z",
+        "labels": [
+          {
+            "cid": "cids(2)",
+            "cts": "1970-01-01T00:00:00.000Z",
+            "src": "user(1)",
+            "uri": "record(3)",
+            "val": "self-label-a",
+          },
+          {
+            "cid": "cids(2)",
+            "cts": "1970-01-01T00:00:00.000Z",
+            "src": "user(1)",
+            "uri": "record(3)",
+            "val": "self-label-b",
+          },
+        ],
+        "viewer": {
+          "blockedBy": false,
+          "followedBy": "record(2)",
+          "following": "record(1)",
+          "muted": false,
+          "mutedOnlyQuoteposts": false,
+          "mutedOnlyReposts": false,
+        },
+      },
+      "description": "Provides all feed candidates",
+      "did": "user(0)",
+      "displayName": "All",
+      "indexedAt": "1970-01-01T00:00:00.000Z",
+      "labels": [],
+      "likeCount": 2,
+      "uri": "record(0)",
+      "viewer": {
+        "like": "record(4)",
+      },
+    },
+    {
+      "cid": "cids(3)",
+      "creator": {
+        "associated": {
+          "activitySubscription": {
+            "allowSubscriptions": "followers",
+          },
+        },
+        "avatar": "https://bsky.public.url/img/avatar/plain/user(2)/cids(1)",
+        "createdAt": "1970-01-01T00:00:00.000Z",
+        "description": "its me!",
+        "did": "user(1)",
+        "displayName": "ali",
+        "handle": "alice.test",
+        "indexedAt": "1970-01-01T00:00:00.000Z",
+        "labels": [
+          {
+            "cid": "cids(2)",
+            "cts": "1970-01-01T00:00:00.000Z",
+            "src": "user(1)",
+            "uri": "record(3)",
+            "val": "self-label-a",
+          },
+          {
+            "cid": "cids(2)",
+            "cts": "1970-01-01T00:00:00.000Z",
+            "src": "user(1)",
+            "uri": "record(3)",
+            "val": "self-label-b",
+          },
+        ],
+        "viewer": {
+          "blockedBy": false,
+          "followedBy": "record(2)",
+          "following": "record(1)",
+          "muted": false,
+          "mutedOnlyQuoteposts": false,
+          "mutedOnlyReposts": false,
+        },
+      },
+      "description": "Provides even-indexed feed candidates",
+      "did": "user(0)",
+      "displayName": "Even",
+      "indexedAt": "1970-01-01T00:00:00.000Z",
+      "labels": [],
+      "likeCount": 0,
+      "uri": "record(5)",
+      "viewer": {},
+    },
+    {
+      "cid": "cids(4)",
+      "creator": {
+        "associated": {
+          "activitySubscription": {
+            "allowSubscriptions": "followers",
+          },
+        },
+        "avatar": "https://bsky.public.url/img/avatar/plain/user(2)/cids(1)",
+        "createdAt": "1970-01-01T00:00:00.000Z",
+        "description": "its me!",
+        "did": "user(1)",
+        "displayName": "ali",
+        "handle": "alice.test",
+        "indexedAt": "1970-01-01T00:00:00.000Z",
+        "labels": [
+          {
+            "cid": "cids(2)",
+            "cts": "1970-01-01T00:00:00.000Z",
+            "src": "user(1)",
+            "uri": "record(3)",
+            "val": "self-label-a",
+          },
+          {
+            "cid": "cids(2)",
+            "cts": "1970-01-01T00:00:00.000Z",
+            "src": "user(1)",
+            "uri": "record(3)",
+            "val": "self-label-b",
+          },
+        ],
+        "viewer": {
+          "blockedBy": false,
+          "followedBy": "record(2)",
+          "following": "record(1)",
+          "muted": false,
+          "mutedOnlyQuoteposts": false,
+          "mutedOnlyReposts": false,
+        },
+      },
+      "description": "Provides all feed candidates, blindly ignoring pagination limit",
+      "did": "user(0)",
+      "displayName": "Bad Pagination Limit",
+      "indexedAt": "1970-01-01T00:00:00.000Z",
+      "labels": [],
+      "likeCount": 0,
+      "uri": "record(6)",
+      "viewer": {},
+    },
+  ],
+}
+`;

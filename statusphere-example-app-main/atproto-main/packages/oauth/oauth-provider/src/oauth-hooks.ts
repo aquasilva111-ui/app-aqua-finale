@@ -1,0 +1,515 @@
+import type { Did } from '@atproto/did'
+import type { Jwks } from '@atproto/jwk'
+import type { Account } from '@atproto/oauth-provider-api'
+import type {
+  OAuthAccessToken,
+  OAuthAuthorizationDetails,
+  OAuthAuthorizationRequestParameters,
+  OAuthClientMetadata,
+  OAuthTokenResponse,
+  OAuthTokenType,
+} from '@atproto/oauth-types'
+import type {
+  DeleteAccountConfirmInput,
+  ResetPasswordConfirmInput,
+  ResetPasswordRequestInput,
+  SignUpData,
+  UpdateEmailConfirmInput,
+  UpdateEmailRequestInput,
+  UpdateHandleData,
+  VerifyEmailConfirmInput,
+  VerifyEmailRequestInput,
+} from './account/account-store.js'
+import type { SignInData } from './account/sign-in-data.js'
+import type { SignUpInput } from './account/sign-up-input.js'
+import type { ClientAuth } from './client/client-auth.js'
+import type { ClientId } from './client/client-id.js'
+import type { ClientInfo } from './client/client-info.js'
+import type { Client } from './client/client.js'
+import type { DeviceId } from './device/device-id.js'
+import type { DpopProof } from './dpop/dpop-proof.js'
+import type { InvalidRequestError } from './errors/invalid-request-error.js'
+import type {
+  HcaptchaClientTokens,
+  HcaptchaConfig,
+  HcaptchaVerifyResult,
+} from './lib/hcaptcha.js'
+import type { RequestMetadata } from './lib/http/request.js'
+import type { Awaitable, OmitKey } from './lib/util/type.js'
+import type { RequestId } from './request/request-id.js'
+import type { AccessTokenPayload } from './signer/access-token-payload.js'
+import type { TokenClaims } from './token/token-claims.js'
+
+// Make sure all types needed to implement the OAuthHooks are exported
+export type {
+  AccessTokenPayload,
+  Account,
+  Awaitable,
+  Client,
+  ClientAuth,
+  ClientId,
+  ClientInfo,
+  DeviceId,
+  Did,
+  DpopProof,
+  HcaptchaClientTokens,
+  HcaptchaConfig,
+  HcaptchaVerifyResult,
+  Jwks,
+  OAuthAccessToken,
+  OAuthAuthorizationDetails,
+  OAuthAuthorizationRequestParameters,
+  OAuthClientMetadata,
+  OAuthTokenResponse,
+  OAuthTokenType,
+  RequestMetadata,
+  ResetPasswordConfirmInput,
+  ResetPasswordRequestInput,
+  SignInData,
+  SignUpData,
+  SignUpInput,
+  TokenClaims,
+  UpdateHandleData,
+}
+
+export type OAuthHooks = {
+  /**
+   * Use this to alter, override or validate the client metadata & jwks returned
+   * by the client store.
+   *
+   * @throws {InvalidClientMetadataError} if the metadata is invalid
+   * @see {@link InvalidClientMetadataError}
+   */
+  getClientInfo?: (
+    clientId: ClientId,
+    data: {
+      metadata: OAuthClientMetadata
+      jwks: Jwks | undefined
+    },
+  ) => Awaitable<undefined | Partial<ClientInfo>>
+
+  /**
+   * This hook is called when a user requests an email change, before the email
+   * change request is triggered on the account store. Only triggered with
+   * authenticated sessions, so the `account` is always available.
+   */
+  onChangeEmailRequest?: (data: {
+    input: UpdateEmailRequestInput
+    deviceId: DeviceId
+    deviceMetadata: RequestMetadata
+    account: Account
+  }) => Awaitable<void>
+
+  /**
+   * This hook is called after a user requests an email change, and the email
+   * change request was successfully triggered on the account store.
+   */
+  onChangeEmailRequested?: (data: {
+    input: UpdateEmailRequestInput
+    deviceId: DeviceId
+    deviceMetadata: RequestMetadata
+    account: Account
+  }) => Awaitable<void>
+
+  /**
+   * This hook is called when a user confirms an email change, before the email
+   * change is actually confirmed on the account store. Only triggered with
+   * authenticated sessions, so the `account` is always available.
+   */
+  onUpdateEmailConfirm?: (data: {
+    input: UpdateEmailConfirmInput
+    deviceId: DeviceId
+    deviceMetadata: RequestMetadata
+    account: Account
+  }) => Awaitable<void>
+
+  /**
+   * This hook is called after a user confirms an email change, and the email
+   * change was successfully confirmed on the account store.
+   */
+  onUpdateEmailConfirmed?: (data: {
+    input: UpdateEmailConfirmInput
+    deviceId: DeviceId
+    deviceMetadata: RequestMetadata
+    account: Account
+    prevAccount: Account
+  }) => Awaitable<void>
+
+  /**
+   * This hook is called when a user requests an email verification, before the
+   * verification request is triggered on the account store. Only triggered with
+   * authenticated sessions, so the `account` is always available.
+   */
+  onVerifyEmailRequest?: (data: {
+    input: VerifyEmailRequestInput
+    deviceId: DeviceId
+    deviceMetadata: RequestMetadata
+    account: Account
+  }) => Awaitable<void>
+
+  /**
+   * This hook is called after a user requests an email verification, and the
+   * verification request was successfully triggered on the account store.
+   */
+  onVerifyEmailRequested?: (data: {
+    input: VerifyEmailRequestInput
+    deviceId: DeviceId
+    deviceMetadata: RequestMetadata
+    account: Account
+  }) => Awaitable<void>
+
+  /**
+   * This hook is called when a user confirms an email verification, before the
+   * verification is actually confirmed on the account store. Only triggered
+   * with authenticated sessions, so the `account` is always available.
+   */
+  onVerifyEmailConfirm?: (data: {
+    input: VerifyEmailConfirmInput
+    deviceId: DeviceId
+    deviceMetadata: RequestMetadata
+    account: Account
+  }) => Awaitable<void>
+
+  /**
+   * This hook is called after a user confirms an email verification, and the
+   * verification was successfully confirmed on the account store.
+   */
+  onVerifyEmailConfirmed?: (data: {
+    input: VerifyEmailConfirmInput
+    deviceId: DeviceId
+    deviceMetadata: RequestMetadata
+    account: Account
+  }) => Awaitable<void>
+
+  /**
+   * This hook is called when a user requests a handle change, before the change
+   * is performed on the account store. Only triggered with authenticated
+   * sessions, so the `account` is always available.
+   */
+  onUpdateHandle?: (data: {
+    input: UpdateHandleData
+    deviceId: DeviceId
+    deviceMetadata: RequestMetadata
+    account: Account
+  }) => Awaitable<void>
+
+  /**
+   * This hook is called after a user successfully changed their handle on the
+   * account store.
+   */
+  onUpdatedHandle?: (data: {
+    input: UpdateHandleData
+    deviceId: DeviceId
+    deviceMetadata: RequestMetadata
+    account: Account
+  }) => Awaitable<void>
+
+  /**
+   * This hook is called when a user requests account deactivation, before the
+   * account is deactivated on the account store.
+   */
+  onDeactivateAccount?: (data: {
+    deviceId: DeviceId
+    deviceMetadata: RequestMetadata
+    account: Account
+  }) => Awaitable<void>
+
+  /**
+   * This hook is called after a user successfully deactivated their account on
+   * the account store.
+   */
+  onDeactivatedAccount?: (data: {
+    deviceId: DeviceId
+    deviceMetadata: RequestMetadata
+    account: Account
+  }) => Awaitable<void>
+
+  /**
+   * This hook is called when a user requests account reactivation, before the
+   * account is reactivated on the account store.
+   */
+  onReactivateAccount?: (data: {
+    deviceId: DeviceId
+    deviceMetadata: RequestMetadata
+    account: Account
+  }) => Awaitable<void>
+
+  /**
+   * This hook is called after a user successfully reactivated their account on
+   * the account store.
+   */
+  onReactivatedAccount?: (data: {
+    deviceId: DeviceId
+    deviceMetadata: RequestMetadata
+    account: Account
+  }) => Awaitable<void>
+
+  /**
+   * This hook is called when a user requests account deletion, before the
+   * confirmation email is dispatched on the account store.
+   */
+  onDeleteAccountRequest?: (data: {
+    deviceId: DeviceId
+    deviceMetadata: RequestMetadata
+    account: Account
+  }) => Awaitable<void>
+
+  /**
+   * This hook is called after a user has requested account deletion and the
+   * confirmation email has been dispatched.
+   */
+  onDeleteAccountRequested?: (data: {
+    deviceId: DeviceId
+    deviceMetadata: RequestMetadata
+    account: Account
+  }) => Awaitable<void>
+
+  /**
+   * This hook is called when a user confirms account deletion, before the
+   * account is actually deleted on the account store.
+   */
+  onDeleteAccountConfirm?: (data: {
+    deviceId: DeviceId
+    deviceMetadata: RequestMetadata
+    account: Account
+  }) => Awaitable<void>
+
+  /**
+   * This hook is called after a user has successfully deleted their account
+   * on the account store.
+   */
+  onDeleteAccountConfirmed?: (data: {
+    deviceId: DeviceId
+    deviceMetadata: RequestMetadata
+    account: Account
+    input: DeleteAccountConfirmInput
+  }) => Awaitable<void>
+
+  /**
+   * This hook is called when a user attempts to sign up, after every validation
+   * has passed (including hcaptcha).
+   */
+  onSignUpAttempt?: (data: {
+    input: SignUpInput
+    deviceId: DeviceId
+    deviceMetadata: RequestMetadata
+    clientId: ClientId | undefined
+  }) => Awaitable<void>
+
+  /**
+   * This hook is called when a user attempts to sign up, after the hcaptcha
+   * `/siteverify` request has been made (and before the result is validated).
+   */
+  onHcaptchaResult?: (data: {
+    input: SignUpInput
+    deviceId: DeviceId
+    deviceMetadata: RequestMetadata
+    tokens: HcaptchaClientTokens
+    result: HcaptchaVerifyResult
+  }) => Awaitable<void>
+
+  /**
+   * This hook is called when a user requests a password reset, before the
+   * reset password request is triggered on the account store. Use this to
+   * potentially cancel the password reset.
+   */
+  onResetPasswordRequest?: (data: {
+    input: ResetPasswordRequestInput
+    deviceId: DeviceId
+    deviceMetadata: RequestMetadata
+  }) => Awaitable<void>
+
+  /**
+   * This hook is called when a user requests a password reset, before the
+   * reset password request is triggered on the account store. If not account
+   * was found for the provided identifier, the `account` field will be `null`.
+   */
+  onResetPasswordRequested?: (data: {
+    input: ResetPasswordRequestInput
+    deviceId: DeviceId
+    deviceMetadata: RequestMetadata
+    account: Account | null
+  }) => Awaitable<void>
+
+  /**
+   * This hook is called when a user confirms a password reset, before the
+   * password is actually reset on the account store.
+   */
+  onResetPasswordConfirm?: (data: {
+    input: ResetPasswordConfirmInput
+    deviceId: DeviceId
+    deviceMetadata: RequestMetadata
+  }) => Awaitable<void>
+
+  /**
+   * This hook is called after a user confirms a password reset, and the
+   * password was successfully reset on the account store.
+   */
+  onResetPasswordConfirmed?: (data: {
+    input: ResetPasswordConfirmInput
+    deviceId: DeviceId
+    deviceMetadata: RequestMetadata
+    account: Account
+  }) => Awaitable<void>
+
+  /**
+   * This hook is called when a user successfully signs up.
+   *
+   * @throws {AccessDeniedError} to deny the sign-up
+   */
+  onSignedUp?: (data: {
+    data: SignUpData
+    account: Account
+    deviceId: DeviceId
+    deviceMetadata: RequestMetadata
+    clientId: ClientId | undefined
+  }) => Awaitable<void>
+
+  /**
+   * `clientId` is populated when the sign-in is submitted in the context of
+   * an OAuth authorization request (i.e. the user is logging in to approve a
+   * client); it is omitted for first-party sign-ins that happen outside any
+   * authorization flow.
+   */
+  onSignInAttempt?: (data: {
+    data: SignInData
+    deviceId: DeviceId
+    deviceMetadata: RequestMetadata
+    clientId: ClientId | undefined
+  }) => Awaitable<void>
+
+  /**
+   * This hook is called when a user successfully signs in.
+   *
+   * `clientId` is populated when the sign-in is submitted in the context of
+   * an OAuth authorization request; see {@link OAuthHooks.onSignInAttempt}.
+   *
+   * @throws {InvalidRequestError} when the sing-in should be denied
+   */
+  onSignedIn?: (data: {
+    data: SignInData
+    account: Account
+    deviceId: DeviceId
+    deviceMetadata: RequestMetadata
+    clientId: ClientId | undefined
+  }) => Awaitable<void>
+
+  /**
+   * This hook is called when a sign-in attempt is rejected by the account
+   * store due to invalid credentials (e.g. unknown identifier, wrong
+   * password). It is *not* called for unexpected server errors, nor for flows
+   * that require an additional authentication factor.
+   *
+   * `sub` is populated when the store throws an
+   * {@link InvalidCredentialsError} that carries the matched subject
+   * identifier (i.e. identifier known, credentials wrong). It is `null` when
+   * the identifier was unknown or when the store threw a plain
+   * {@link InvalidRequestError} without distinguishing the two cases.
+   *
+   * `clientId` is populated when the sign-in is submitted in the context of
+   * an OAuth authorization request; see {@link OAuthHooks.onSignInAttempt}.
+   *
+   * Errors thrown from this hook are caught and ignored so that they do not
+   * mask the original authentication failure.
+   */
+  onSignInFailed?: (data: {
+    data: SignInData
+    error: InvalidRequestError
+    did: Did | null
+    deviceId: DeviceId
+    deviceMetadata: RequestMetadata
+    clientId: ClientId | undefined
+  }) => Awaitable<void>
+
+  /**
+   * Allows validating an authorization request (typically the requested scopes)
+   * before it is created. Note that the validity against the client metadata is
+   * already enforced by the OAuth provider.
+   *
+   * @throws {AuthorizationError}
+   */
+  onAuthorizationRequest?: (data: {
+    client: Client
+    clientAuth: null | ClientAuth
+    parameters: Readonly<OAuthAuthorizationRequestParameters>
+  }) => Awaitable<void>
+
+  /**
+   * This hook is called when a client is authorized.
+   *
+   * @throws {AuthorizationError} to deny the authorization request and redirect
+   * the user to the client with an OAuth error (other errors will result in an
+   * internal server error being displayed to the user)
+   *
+   * @note We use `deviceMetadata` instead of `clientMetadata` to make it clear
+   * that this metadata is from the user device, which might be different from
+   * the client metadata (because the OAuth client could live in a backend).
+   */
+  onAuthorized?: (data: {
+    client: Client
+    account: Account
+    parameters: OAuthAuthorizationRequestParameters
+    deviceId: DeviceId
+    deviceMetadata: RequestMetadata
+    requestId: RequestId
+  }) => Awaitable<void>
+
+  /**
+   * This hook is called whenever a token is about to be created. You can use
+   * it to modify the token claims or perform additional validation.
+   *
+   * This hook should never throw an error.
+   */
+  onCreateToken?: (data: {
+    client: Client
+    account: Account
+    parameters: OAuthAuthorizationRequestParameters
+    claims: TokenClaims
+  }) => Awaitable<void | OmitKey<AccessTokenPayload, 'iss'>>
+
+  /**
+   * This hook is called whenever a token was just decoded, and basic validation
+   * was performed (signature, expiration, not-before).
+   *
+   * It can be used to modify the payload (e.g., to add custom claims), or to
+   * perform additional validation.
+   *
+   * This hook is called when authenticating requests through the
+   * `authenticateRequest()` method in `OAuthVerifier` and `OAuthProvider`.
+   *
+   * Any error thrown here will be propagated.
+   */
+  onDecodeToken?: (data: {
+    tokenType: OAuthTokenType
+    token: OAuthAccessToken
+    payload: AccessTokenPayload
+    dpopProof: null | DpopProof
+  }) => Promise<AccessTokenPayload | void>
+
+  /**
+   * This hook is called when an authorized client exchanges an authorization
+   * code for an access token.
+   *
+   * @throws {OAuthError} to cancel the token creation and revoke the session
+   */
+  onTokenCreated?: (data: {
+    client: Client
+    clientAuth: ClientAuth
+    clientMetadata: RequestMetadata
+    account: Account
+    parameters: OAuthAuthorizationRequestParameters
+  }) => Awaitable<void>
+
+  /**
+   * This hook is called when an authorized client refreshes an access token.
+   *
+   * @throws {OAuthError} to cancel the token refresh and revoke the session
+   */
+  onTokenRefreshed?: (data: {
+    client: Client
+    clientAuth: ClientAuth
+    clientMetadata: RequestMetadata
+    account: Account
+    parameters: OAuthAuthorizationRequestParameters
+  }) => Awaitable<void>
+}

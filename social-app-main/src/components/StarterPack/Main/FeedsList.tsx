@@ -1,0 +1,70 @@
+import {forwardRef, useCallback, useImperativeHandle, useState} from 'react'
+import {type ListRenderItemInfo, View} from 'react-native'
+
+import {useBottomBarOffset} from '#/lib/hooks/useBottomBarOffset'
+import {List, type ListRef} from '#/view/com/util/List'
+import {type SectionRef} from '#/screens/Profile/Sections/types'
+import {atoms as a, useTheme} from '#/alf'
+import * as FeedCard from '#/components/FeedCard'
+import {IS_NATIVE, IS_WEB} from '#/env'
+import {type app} from '#/lexicons'
+
+function keyExtractor(item: app.bsky.feed.defs.GeneratorView) {
+  return item.uri
+}
+
+interface ProfilesListProps {
+  feeds: app.bsky.feed.defs.GeneratorView[]
+  headerHeight: number
+  scrollElRef: ListRef
+}
+
+export const FeedsList = forwardRef<SectionRef, ProfilesListProps>(
+  function FeedsListImpl({feeds, headerHeight, scrollElRef}, ref) {
+    const [initialHeaderHeight] = useState(headerHeight)
+    const bottomBarOffset = useBottomBarOffset(20)
+    const t = useTheme()
+
+    const onScrollToTop = useCallback(() => {
+      scrollElRef.current?.scrollToOffset({
+        animated: IS_NATIVE,
+        offset: -headerHeight,
+      })
+    }, [scrollElRef, headerHeight])
+
+    useImperativeHandle(ref, () => ({
+      scrollToTop: onScrollToTop,
+    }))
+
+    const renderItem = ({
+      item,
+      index,
+    }: ListRenderItemInfo<app.bsky.feed.defs.GeneratorView>) => {
+      return (
+        <View
+          style={[
+            a.p_lg,
+            (IS_WEB || index !== 0) && a.border_t,
+            t.atoms.border_contrast_low,
+          ]}>
+          <FeedCard.Default view={item} />
+        </View>
+      )
+    }
+
+    return (
+      <List
+        data={feeds}
+        renderItem={renderItem}
+        keyExtractor={keyExtractor}
+        ref={scrollElRef}
+        headerOffset={headerHeight}
+        ListFooterComponent={
+          <View style={[{height: initialHeaderHeight + bottomBarOffset}]} />
+        }
+        showsVerticalScrollIndicator={false}
+        desktopFixedHeight={true}
+      />
+    )
+  },
+)

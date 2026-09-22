@@ -1,0 +1,159 @@
+import type { AtUriString } from '@atproto/syntax'
+import type { Server } from '@atproto/xrpc-server'
+import type { ServerConfig } from '../../../../config.js'
+import type { AppContext } from '../../../../context.js'
+import {
+  Code,
+  type DataPlaneClient,
+  isDataplaneError,
+} from '../../../../data-plane/index.js'
+import type { HydrateCtx, Hydrator } from '../../../../hydration/hydrator.js'
+import { app } from '../../../../lexicons/index.js'
+import {
+  type HydrationFnInput,
+  type PresentationFnInput,
+  type SkeletonFnInput,
+  createPipeline,
+  noRules,
+} from '../../../../pipeline.js'
+import { postUriToThreadgateUri } from '../../../../util/uris.js'
+import type { Views } from '../../../../views/index.js'
+import { resHeaders } from '../../../util.js'
+
+export default function (server: Server, ctx: AppContext) {
+  const getPostThread = createPipeline(
+    skeleton,
+    hydration,
+    noRules, // handled in presentation: 3p block-violating replies are turned to #blockedPost, viewer blocks turned to #notFoundPost.
+    presentation,
+  )
+  server.add(app.bsky.unspecced.getPostThreadV2, {
+    auth: ctx.authVerifier.optionalStandardOrRole,
+    handler: async ({ params, auth, req }) => {
+      const { viewer, includeTakedowns, include3pBlocks, skipViewerBlocks } =
+        ctx.authVerifier.parseCreds(auth)
+      const labelers = ctx.reqLabelers(req)
+      const features = ctx.featureGatesClient.scope(
+        ctx.featureGatesClient.parseUserContextFromHandler({
+          viewer,
+          req,
+        }),
+      )
+      // temp
+      void features.checkGate(features.Gate.AATest)
+      const hydrateCtx = await ctx.hydrator.createContext({
+        labelers,
+        viewer,
+        includeTakedowns,
+        include3pBlocks,
+        skipViewerBlocks,
+        features,
+      })
+
+      return {
+        encoding: 'application/json',
+        body: await getPostThread({ ...params, hydrateCtx }, ctx),
+        headers: resHeaders({
+          labelers: hydrateCtx.labelers,
+        }),
+      }
+    },
+  })
+}
+
+const skeleton = async (
+  inputs: SkeletonFnInput<Context, Params>,
+): Promise<Skeleton> => {
+  const { ctx, params } = inputs
+  const anchor = await ctx.hydrator.resolveUri(params.anchor)
+  try {
+    const res = await ctx.dataplane.getThread({
+      postUri: anchor,
+      above: calculateAbove(ctx, params),
+      below: calculateBelow(ctx, anchor, params),
+    })
+    return {
+      anchor,
+      uris: res.uris as AtUriString[],
+      opThread: res.opThread.length
+        ? (res.opThread as AtUriString[])
+        : undefined,
+    }
+  } catch (err) {
+    if (isDataplaneError(err, Code.NotFound)) {
+      return {
+        anchor,
+        uris: [],
+      }
+    } else {
+      throw err
+    }
+  }
+}
+
+const hydration = async (
+  inputs: HydrationFnInput<Context, Params, Skeleton>,
+) => {
+  const { ctx, params, skeleton } = inputs
+  return ctx.hydrator.hydrateThreadPosts(
+    skeleton.uris.map((uri) => ({ uri })),
+    params.hydrateCtx,
+    {
+      knownLikers: {
+        subjectUris: [skeleton.anchor],
+      },
+    },
+  )
+}
+
+const presentation = (
+  inputs: PresentationFnInput<Context, Params, Skeleton>,
+) => {
+  const { ctx, params, skeleton, hydration } = inputs
+  const { hasOtherReplies, thread } = ctx.views.threadV2(skeleton, hydration, {
+    above: calculateAbove(ctx, params),
+    below: calculateBelow(ctx, skeleton.anchor, params),
+    branchingFactor: params.branchingFactor,
+    sort: params.sort,
+  })
+
+  const rootUri =
+    hydration.posts?.get(skeleton.anchor)?.record.reply?.root.uri ??
+    skeleton.anchor
+  const threadgate = ctx.views.threadgate(
+    postUriToThreadgateUri(rootUri),
+    hydration,
+  )
+  return { hasOtherReplies, thread, threadgate }
+}
+
+type Context = {
+  dataplane: DataPlaneClient
+  hydrator: Hydrator
+  views: Views
+  cfg: ServerConfig
+}
+
+type Params = app.bsky.unspecced.getPostThreadV2.$Params & {
+  hydrateCtx: HydrateCtx
+}
+
+type Skeleton = {
+  anchor: AtUriString
+  uris: AtUriString[]
+  // The complete OP thread (root first, in chain order), untrimmed by
+  // above/below limits. See GetThreadResponse.op_thread.
+  opThread?: AtUriString[]
+}
+
+const calculateAbove = (ctx: Context, params: Params) => {
+  return params.above ? ctx.cfg.maxThreadParents : 0
+}
+
+const calculateBelow = (ctx: Context, anchor: string, params: Params) => {
+  let maxDepth = ctx.cfg.maxThreadDepth
+  if (ctx.cfg.bigThreadUris.has(anchor) && ctx.cfg.bigThreadDepth) {
+    maxDepth = ctx.cfg.bigThreadDepth
+  }
+  return maxDepth ? Math.min(maxDepth, params.below) : params.below
+}

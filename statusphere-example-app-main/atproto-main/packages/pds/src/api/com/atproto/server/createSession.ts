@@ -1,0 +1,107 @@
+import { DAY, MINUTE } from '@atproto/common'
+import {
+  type DidString,
+  type HandleString,
+  INVALID_HANDLE,
+} from '@atproto/syntax'
+import {
+  AuthRequiredError,
+  type MethodRateLimit,
+  type Server,
+} from '@atproto/xrpc-server'
+import { formatAccountStatus } from '../../../../account-manager/account-manager.js'
+import { OLD_PASSWORD_MAX_LENGTH } from '../../../../account-manager/helpers/scrypt.js'
+import type { AppContext } from '../../../../context.js'
+import { events } from '../../../../events.js'
+import { com } from '../../../../lexicons/index.js'
+import { didDocForSession } from './util.js'
+
+export default function (server: Server, ctx: AppContext) {
+  const { entrywayClient } = ctx
+
+  const rateLimit: MethodRateLimit<
+    void,
+    com.atproto.server.createSession.$Params,
+    com.atproto.server.createSession.$Input
+  > = [
+    {
+      durationMs: DAY,
+      points: 300,
+      calcKey: ({ input, req }) => `${input.body.identifier}-${req.ip}`,
+    },
+    {
+      durationMs: 5 * MINUTE,
+      points: 30,
+      calcKey: ({ input, req }) => `${input.body.identifier}-${req.ip}`,
+    },
+  ]
+
+  if (entrywayClient) {
+    server.add(com.atproto.server.createSession, {
+      rateLimit,
+      handler: async ({ input: { body }, req }) => {
+        const { headers } = ctx.entrywayPassthruHeaders(req)
+        return entrywayClient.xrpc(com.atproto.server.createSession, {
+          headers,
+          body,
+        })
+      },
+    })
+  } else {
+    server.add(com.atproto.server.createSession, {
+      rateLimit,
+      handler: async ({
+        input: { body },
+      }): Promise<com.atproto.server.createSession.$Output> => {
+        if (body.password.length > OLD_PASSWORD_MAX_LENGTH) {
+          throw new AuthRequiredError(
+            'Password too long. Consider resetting your password.',
+          )
+        }
+
+        const { user, isSoftDeleted, appPassword } =
+          await ctx.accountManager.login(body)
+
+        if (!body.allowTakendown && isSoftDeleted) {
+          throw new AuthRequiredError(
+            'Account has been taken down',
+            'AccountTakedown',
+          )
+        }
+
+        const [{ accessJwt, refreshJwt }, didDoc] = await Promise.all([
+          ctx.accountManager.createSession(
+            user.did,
+            appPassword,
+            isSoftDeleted,
+          ),
+          didDocForSession(ctx, user.did),
+        ])
+
+        const { status, active } = formatAccountStatus(user)
+
+        events.sessionCreated({
+          source: com.atproto.server.createSession.$lxm,
+          did: user.did,
+        })
+
+        return {
+          encoding: 'application/json',
+          body: {
+            accessJwt,
+            refreshJwt,
+
+            did: user.did as DidString,
+            // @ts-expect-error https://github.com/bluesky-social/atproto/pull/4406
+            didDoc,
+            handle: (user.handle ?? INVALID_HANDLE) as HandleString,
+            email: user.email ?? undefined,
+            emailConfirmed: !!user.emailConfirmedAt,
+            active,
+            status,
+          },
+        }
+      },
+    })
+  }
+}

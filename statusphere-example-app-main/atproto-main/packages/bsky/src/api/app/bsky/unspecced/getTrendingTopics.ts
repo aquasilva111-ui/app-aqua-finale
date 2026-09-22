@@ -1,0 +1,99 @@
+import { noUndefinedVals } from '@atproto/common'
+import type { Client } from '@atproto/lex'
+import { MethodNotImplementedError, type Server } from '@atproto/xrpc-server'
+import type { AppContext } from '../../../../context.js'
+import type { HydrateCtx, Hydrator } from '../../../../hydration/hydrator.js'
+import { app } from '../../../../lexicons/index.js'
+import {
+  type HydrationFn,
+  type PresentationFn,
+  type RulesFn,
+  type SkeletonFn,
+  createPipeline,
+} from '../../../../pipeline.js'
+import type { Views } from '../../../../views/index.js'
+
+export default function (server: Server, ctx: AppContext) {
+  const getTrendingTopics = createPipeline(
+    skeleton,
+    hydration,
+    noBlocksOrMutes,
+    presentation,
+  )
+  server.add(app.bsky.unspecced.getTrendingTopics, {
+    auth: ctx.authVerifier.standardOptional,
+    handler: async ({ auth, params, req, signal }) => {
+      const viewer = auth.credentials.iss
+      const labelers = ctx.reqLabelers(req)
+      const hydrateCtx = await ctx.hydrator.createContext({ labelers, viewer })
+      const headers = noUndefinedVals({
+        'accept-language': req.headers['accept-language'],
+      })
+      const result = await getTrendingTopics(
+        {
+          ...params,
+          hydrateCtx,
+          headers,
+          signal,
+        },
+        ctx,
+      )
+      return {
+        encoding: 'application/json',
+        body: result,
+      }
+    },
+  })
+}
+
+const skeleton: SkeletonFn<Context, Params, SkeletonState> = async (input) => {
+  const { params, ctx } = input
+
+  if (!ctx.irisClient) {
+    // Use 501 instead of 500 as these are not considered retry-able by clients
+    throw new MethodNotImplementedError('Topics agent not available')
+  }
+
+  return ctx.irisClient.call(
+    app.bsky.unspecced.getTrendingTopics,
+    {
+      limit: params.limit,
+      viewer: params.hydrateCtx.viewer ?? undefined,
+    },
+    {
+      headers: params.headers,
+      signal: params.signal,
+    },
+  )
+}
+
+const hydration: HydrationFn<Context, Params, SkeletonState> = async () => {
+  return {}
+}
+
+const noBlocksOrMutes: RulesFn<Context, Params, SkeletonState> = (input) => {
+  return input.skeleton
+}
+
+const presentation: PresentationFn<
+  Context,
+  Params,
+  SkeletonState,
+  SkeletonState
+> = (input) => {
+  return input.skeleton
+}
+
+type Context = {
+  hydrator: Hydrator
+  views: Views
+  irisClient: Client | undefined
+}
+
+type Params = Omit<app.bsky.unspecced.getTrendingTopics.$Params, 'viewer'> & {
+  hydrateCtx: HydrateCtx
+  headers: Record<string, string>
+  signal: AbortSignal
+}
+
+type SkeletonState = app.bsky.unspecced.getTrendingTopics.$OutputBody

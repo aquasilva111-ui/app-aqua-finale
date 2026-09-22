@@ -1,0 +1,124 @@
+import { once } from 'node:events'
+import type * as http from 'node:http'
+import express from 'express'
+import {
+  type LexiconDocument,
+  LexiconIterableIndexer,
+  LexiconSchemaBuilder,
+} from '@atproto/lex-document'
+import type { LexiconDoc } from '@atproto/lexicon'
+import {
+  AuthRequiredError,
+  type MethodConfigOrHandler,
+  type Options,
+  Server,
+  type StreamConfigOrHandler,
+} from '../src/index.js'
+
+// @ts-expect-error
+Symbol.asyncDispose ??= Symbol.for('nodejs.asyncDispose')
+
+export async function createServer({ router }: Server): Promise<http.Server> {
+  const app = express()
+  app.use(router)
+  const httpServer = app.listen(0)
+  await once(httpServer, 'listening')
+  // @NOTE Types define `http.Server` as `AsyncDisposable`, but not all
+  // environments seem to support it.
+  if (!(Symbol.asyncDispose in httpServer)) {
+    Object.defineProperty(httpServer, Symbol.asyncDispose, {
+      value: async function (this: http.Server) {
+        return closeServer(this)
+      },
+    })
+  }
+  return httpServer
+}
+
+export async function closeServer(httpServer: http.Server) {
+  await new Promise((r) => {
+    httpServer.close(() => r(undefined))
+  })
+}
+
+export function createBasicAuth(allowed: {
+  username: string
+  password: string
+}) {
+  return function (ctx: { req: http.IncomingMessage }) {
+    const header = ctx.req.headers.authorization ?? ''
+    if (!header.startsWith('Basic ')) {
+      throw new AuthRequiredError()
+    }
+    const original = header.replace('Basic ', '')
+    const [username, password] = Buffer.from(original, 'base64')
+      .toString()
+      .split(':')
+    if (username !== allowed.username || password !== allowed.password) {
+      throw new AuthRequiredError()
+    }
+    return {
+      credentials: { username },
+      artifacts: { original },
+    }
+  }
+}
+
+export function basicAuthHeaders(creds: {
+  username: string
+  password: string
+}) {
+  return {
+    authorization:
+      'Basic ' +
+      Buffer.from(`${creds.username}:${creds.password}`).toString('base64'),
+  }
+}
+
+/**
+ * Builds a lexicon server based on an `@atproto/lexicon`
+ * {@link import('@atproto/lexicon').Lexicons} instance. Validation will be
+ * performed by {@link import('@atproto/lexicon').Lexicons}'s various assertion
+ * methods. This allows for testing the server's integration with
+ * `@atproto/lexicon`.
+ */
+export async function buildMethodLexicons(
+  lexicons: LexiconDoc[],
+  handlers: Record<string, MethodConfigOrHandler | StreamConfigOrHandler>,
+  options?: Options,
+) {
+  const server = new Server(structuredClone(lexicons), options)
+  for (const [id, handler] of Object.entries(handlers)) {
+    const def = server.lex.getDef(id)
+    if (def?.type === 'subscription') {
+      server.addStreamMethod(id, handler as StreamConfigOrHandler)
+    } else {
+      server.method(id, handler as MethodConfigOrHandler)
+    }
+  }
+  return server
+}
+
+/**
+ * Builds a lexicon server based on `@atproto/lex`'s
+ * {@link import('@atproto/lex').Query},
+ * {@link import('@atproto/lex').Procedure}, and
+ * {@link import('@atproto/lex').Subscription} method definitions. Validation
+ * will be performed through built schema verifiers created by
+ * {@link LexiconSchemaBuilder}. This helper allows for testing the server's
+ * integration with `@atproto/lex`.
+ */
+export async function buildAddLexicons(
+  lexicons: LexiconDocument[],
+  handlers: Record<string, MethodConfigOrHandler | StreamConfigOrHandler>,
+  options?: Options,
+) {
+  const server = new Server(undefined, options)
+  await using indexer = new LexiconIterableIndexer(structuredClone(lexicons))
+  await using builder = new LexiconSchemaBuilder(indexer)
+  for (const [id, handler] of Object.entries(handlers)) {
+    const schema = await builder.buildFullRef(`${id}#main`)
+    server.add(schema as any, handler as any)
+  }
+  return server
+}

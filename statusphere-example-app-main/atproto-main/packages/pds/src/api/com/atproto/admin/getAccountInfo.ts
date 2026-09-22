@@ -1,0 +1,32 @@
+import { InvalidRequestError, type Server } from '@atproto/xrpc-server'
+import type { AppContext } from '../../../../context.js'
+import { com } from '../../../../lexicons/index.js'
+import { formatAccountInfo } from './util.js'
+
+export default function (server: Server, ctx: AppContext) {
+  server.add(com.atproto.admin.getAccountInfo, {
+    auth: ctx.authVerifier.moderator,
+    handler: async ({ params }) => {
+      const [account, invites, invitedBy] = await Promise.all([
+        ctx.accountManager.getAccount(params.did, {
+          includeDeactivated: true,
+          includeTakenDown: true,
+        }),
+        ctx.accountManager.getAccountInvitesCodes(params.did),
+        ctx.accountManager.getInvitedByForAccounts([params.did]),
+      ])
+      if (!account) {
+        throw new InvalidRequestError('Account not found', 'NotFound')
+      }
+      const managesOwnInvites = !ctx.cfg.entryway
+      return {
+        encoding: 'application/json' as const,
+        body: formatAccountInfo(account, {
+          managesOwnInvites,
+          invitedBy,
+          invites,
+        }),
+      }
+    },
+  })
+}

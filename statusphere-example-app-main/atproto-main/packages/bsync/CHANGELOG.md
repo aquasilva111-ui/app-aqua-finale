@@ -1,0 +1,373 @@
+# @atproto/bsync
+
+## 0.0.44
+
+### Patch Changes
+
+- [#5488](https://github.com/bluesky-social/atproto/pull/5488) [`fe4087e`](https://github.com/bluesky-social/atproto/commit/fe4087ecb7a7cc53c7081c9f97d49121e5251c36) Thanks [@dependabot](https://github.com/apps/dependabot)! - Bump the dev-dependencies group across 1 directory with 30 updates
+
+- Updated dependencies [[`0287dce`](https://github.com/bluesky-social/atproto/commit/0287dcece76c2c2453406cb3b51591ce0f983a98)]:
+  - @atproto-labs/opentelemetry-node@0.2.1
+  - @atproto/common@0.8.3
+
+## 0.0.43
+
+### Patch Changes
+
+- [#5486](https://github.com/bluesky-social/atproto/pull/5486) [`04dc5ab`](https://github.com/bluesky-social/atproto/commit/04dc5ab09b4439779d254a5478c8ea3a19c44189) Thanks [@rafaeleyng](https://github.com/rafaeleyng)! - Resolve private dataplane hosts over IPv4.
+
+- [#5484](https://github.com/bluesky-social/atproto/pull/5484) [`14bd634`](https://github.com/bluesky-social/atproto/commit/14bd63433726fb2acf1b77358710950341f4b949) Thanks [@rafaeleyng](https://github.com/rafaeleyng)! - Fan out notification read timestamps through bsync and prevent older timestamps from replacing newer ones.
+
+- [#5472](https://github.com/bluesky-social/atproto/pull/5472) [`222f4bc`](https://github.com/bluesky-social/atproto/commit/222f4bc600fb89c75fafee95ef3c837b1721601e) Thanks [@rafaeleyng](https://github.com/rafaeleyng)! - Move the RPC telemetry constants shared by both halves of a bsync call into `@atproto-labs/opentelemetry-node`: the `bsync.namespace` and `bsync.operation` attribute keys and `RPC_CALL_DURATION_BUCKETS` are now exported from the `/conventions` entrypoint, and `statusCodeToString()` from the new `/util` entrypoint. Previously the AppView imported these from `@atproto/bsync`, which made a whole service package a runtime dependency of another just to agree on a metric label.
+
+- [#5470](https://github.com/bluesky-social/atproto/pull/5470) [`715caf1`](https://github.com/bluesky-social/atproto/commit/715caf130a9347b36b9cbdf479ae5d6113e030c6) Thanks [@rafaeleyng](https://github.com/rafaeleyng)! - Record client and server latency metrics and traces for bsync requests, including operation namespaces.
+
+- Updated dependencies [[`222f4bc`](https://github.com/bluesky-social/atproto/commit/222f4bc600fb89c75fafee95ef3c837b1721601e), [`46fdec9`](https://github.com/bluesky-social/atproto/commit/46fdec90d4eca8c8d7c8eeb7dc801cf52ffaaed6), [`ed0b7d3`](https://github.com/bluesky-social/atproto/commit/ed0b7d38811bb24952a3f1da988b02e39934d222)]:
+  - @atproto-labs/opentelemetry-node@0.2.0
+  - @atproto/syntax@0.7.6
+  - @atproto/common@0.8.2
+
+## 0.0.42
+
+### Patch Changes
+
+- Updated dependencies [[`6af9f14`](https://github.com/bluesky-social/atproto/commit/6af9f141d18c1f41a04828af8256567d5f17a35e)]:
+  - @atproto/syntax@0.7.5
+  - @atproto/common@0.8.1
+
+## 0.0.41
+
+### Patch Changes
+
+- Updated dependencies [[`898c469`](https://github.com/bluesky-social/atproto/commit/898c469cf568b941f38f9c3371997a513ac05cfa), [`898c469`](https://github.com/bluesky-social/atproto/commit/898c469cf568b941f38f9c3371997a513ac05cfa), [`898c469`](https://github.com/bluesky-social/atproto/commit/898c469cf568b941f38f9c3371997a513ac05cfa), [`898c469`](https://github.com/bluesky-social/atproto/commit/898c469cf568b941f38f9c3371997a513ac05cfa), [`898c469`](https://github.com/bluesky-social/atproto/commit/898c469cf568b941f38f9c3371997a513ac05cfa), [`898c469`](https://github.com/bluesky-social/atproto/commit/898c469cf568b941f38f9c3371997a513ac05cfa), [`898c469`](https://github.com/bluesky-social/atproto/commit/898c469cf568b941f38f9c3371997a513ac05cfa)]:
+  - @atproto/common@0.8.0
+
+## 0.0.40
+
+### Patch Changes
+
+- Updated dependencies [[`b66870d`](https://github.com/bluesky-social/atproto/commit/b66870d5a1efbcfa0cc07498c7cfcf3f0f243e86), [`b66870d`](https://github.com/bluesky-social/atproto/commit/b66870d5a1efbcfa0cc07498c7cfcf3f0f243e86)]:
+  - @atproto/common@0.7.6
+
+## 0.0.39
+
+### Patch Changes
+
+- [#5340](https://github.com/bluesky-social/atproto/pull/5340) [`8145a99`](https://github.com/bluesky-social/atproto/commit/8145a999e03219e846ae4773ec66f0de72939511) Thanks [@43081j](https://github.com/43081j)! - Remove typed-emitter and use built-in strongly typed `EventEmitter`
+
+- [#5327](https://github.com/bluesky-social/atproto/pull/5327) [`c677bf3`](https://github.com/bluesky-social/atproto/commit/c677bf393d666bd20fc89c7386448f06375aba9c) Thanks [@rafaeleyng](https://github.com/rafaeleyng)! - Update bsync service image
+
+- Updated dependencies [[`8b55a4a`](https://github.com/bluesky-social/atproto/commit/8b55a4ab69c24e5038f67c479b3b9953666ea0c2)]:
+  - @atproto/syntax@0.7.4
+  - @atproto/common@0.7.5
+
+## 0.0.38
+
+### Patch Changes
+
+- [#5301](https://github.com/bluesky-social/atproto/pull/5301) [`8c07338`](https://github.com/bluesky-social/atproto/commit/8c07338232aa69427aa65322a555f70e0211d6d7) Thanks [@43081j](https://github.com/43081j)! - Switch from destructured default imports to named imports of CommonJS dependencies.
+
+- Updated dependencies [[`6a3d607`](https://github.com/bluesky-social/atproto/commit/6a3d6073cb66c527b5b109242049c85c36b9658c)]:
+  - @atproto/syntax@0.7.3
+  - @atproto/common@0.7.4
+
+## 0.0.37
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @atproto/common@0.7.3
+
+## 0.0.36
+
+### Patch Changes
+
+- Updated dependencies [[`9e1da84`](https://github.com/bluesky-social/atproto/commit/9e1da84cc00a1cc5b453705539a2766403f3ee55)]:
+  - @atproto/syntax@0.7.2
+  - @atproto/common@0.7.2
+
+## 0.0.35
+
+### Patch Changes
+
+- [#5197](https://github.com/bluesky-social/atproto/pull/5197) [`a0c49d9`](https://github.com/bluesky-social/atproto/commit/a0c49d9e8bc685c5a747a8d3b2775c73c63fdb6f) Thanks [@matthieusieben](https://github.com/matthieusieben)! - Rewrite import statements to be compatible with TypeScript's `verbatimModuleSyntax` config.
+
+- Updated dependencies [[`a0c49d9`](https://github.com/bluesky-social/atproto/commit/a0c49d9e8bc685c5a747a8d3b2775c73c63fdb6f)]:
+  - @atproto/common@0.7.1
+  - @atproto/syntax@0.7.1
+
+## 0.0.34
+
+### Patch Changes
+
+- Updated dependencies [[`d1be0ce`](https://github.com/bluesky-social/atproto/commit/d1be0cead444ef95e64cac5ea5318edbec9d8112), [`d1be0ce`](https://github.com/bluesky-social/atproto/commit/d1be0cead444ef95e64cac5ea5318edbec9d8112), [`d79f6d5`](https://github.com/bluesky-social/atproto/commit/d79f6d59a073c05cc37bd0d1482beeea482b67ed)]:
+  - @atproto/syntax@0.7.0
+  - @atproto/common@0.7.0
+
+## 0.0.33
+
+### Patch Changes
+
+- [#5099](https://github.com/bluesky-social/atproto/pull/5099) [`b43ec31`](https://github.com/bluesky-social/atproto/commit/b43ec31f247f4461725b01226885f88bd430ca07) Thanks [@matthieusieben](https://github.com/matthieusieben)! - Update TypeScript build to rely on references to composite internal projects
+
+- [#5099](https://github.com/bluesky-social/atproto/pull/5099) [`b43ec31`](https://github.com/bluesky-social/atproto/commit/b43ec31f247f4461725b01226885f88bd430ca07) Thanks [@matthieusieben](https://github.com/matthieusieben)! - Bundle only necessary files in the NPM tarball, including the `CHANGELOG.md` and `README.md` files (if present).
+
+- [#5099](https://github.com/bluesky-social/atproto/pull/5099) [`b43ec31`](https://github.com/bluesky-social/atproto/commit/b43ec31f247f4461725b01226885f88bd430ca07) Thanks [@matthieusieben](https://github.com/matthieusieben)! - Build with `noImplicitAny` enabled
+
+- Updated dependencies [[`28a0b58`](https://github.com/bluesky-social/atproto/commit/28a0b588147863eaef948cd2bb8fc0f19d08cda9), [`b43ec31`](https://github.com/bluesky-social/atproto/commit/b43ec31f247f4461725b01226885f88bd430ca07), [`b43ec31`](https://github.com/bluesky-social/atproto/commit/b43ec31f247f4461725b01226885f88bd430ca07), [`b43ec31`](https://github.com/bluesky-social/atproto/commit/b43ec31f247f4461725b01226885f88bd430ca07), [`b43ec31`](https://github.com/bluesky-social/atproto/commit/b43ec31f247f4461725b01226885f88bd430ca07)]:
+  - @atproto/syntax@0.6.4
+  - @atproto/common@0.6.5
+
+## 0.0.32
+
+### Patch Changes
+
+- [#4179](https://github.com/bluesky-social/atproto/pull/4179) [`85c25ef`](https://github.com/bluesky-social/atproto/commit/85c25efde14c1d0383f32bba21b21bdad2ae2619) Thanks [@rafaeleyng](https://github.com/rafaeleyng)! - Subscribe to the real bsync service in dev-env instead of using a mock, with a `BsyncSubscription` on the bsky dataplane that consumes the mute, notif, and operation streams. Supports immediate shutdown (aborting in-flight long-polls) and cursor-based draining so tests stay fast.
+
+## 0.0.31
+
+### Patch Changes
+
+- [#5151](https://github.com/bluesky-social/atproto/pull/5151) [`a51c45d`](https://github.com/bluesky-social/atproto/commit/a51c45d38f6bd7b8765f640e564cf921d52162e7) Thanks [@matthieusieben](https://github.com/matthieusieben)! - Update dependencies
+
+- [#5149](https://github.com/bluesky-social/atproto/pull/5149) [`f2cf8f7`](https://github.com/bluesky-social/atproto/commit/f2cf8f7fc5f3a10847f2e6d785e5fa2244ee8cfb) Thanks [@matthieusieben](https://github.com/matthieusieben)! - Update `pino` logger to version 10
+
+- Updated dependencies [[`f2cf8f7`](https://github.com/bluesky-social/atproto/commit/f2cf8f7fc5f3a10847f2e6d785e5fa2244ee8cfb), [`a51c45d`](https://github.com/bluesky-social/atproto/commit/a51c45d38f6bd7b8765f640e564cf921d52162e7), [`f2cf8f7`](https://github.com/bluesky-social/atproto/commit/f2cf8f7fc5f3a10847f2e6d785e5fa2244ee8cfb)]:
+  - @atproto/common@0.6.4
+  - @atproto/syntax@0.6.3
+
+## 0.0.30
+
+### Patch Changes
+
+- [#5117](https://github.com/bluesky-social/atproto/pull/5117) [`8a4c88b`](https://github.com/bluesky-social/atproto/commit/8a4c88b0f63fb2d82b1391d64c54e0c760fac48b) Thanks [@matthieusieben](https://github.com/matthieusieben)! - Use http-terminator to close http server
+
+## 0.0.29
+
+### Patch Changes
+
+- [#5086](https://github.com/bluesky-social/atproto/pull/5086) [`20665c1`](https://github.com/bluesky-social/atproto/commit/20665c18322effe648f73d70fc1a8dcc7e312992) Thanks [@devinivy](https://github.com/devinivy)! - Upgrade kysely from 0.22 to 0.29
+
+## 0.0.28
+
+### Patch Changes
+
+- [#4967](https://github.com/bluesky-social/atproto/pull/4967) [`9fc720c`](https://github.com/bluesky-social/atproto/commit/9fc720ce75f3ee88a5e48a9be919b07c7647f6f5) Thanks [@matthieusieben](https://github.com/matthieusieben)! - Use TypeScript 7 to build package
+
+- Updated dependencies [[`9fc720c`](https://github.com/bluesky-social/atproto/commit/9fc720ce75f3ee88a5e48a9be919b07c7647f6f5)]:
+  - @atproto/common@0.6.3
+  - @atproto/syntax@0.6.2
+
+## 0.0.27
+
+### Patch Changes
+
+- [#4964](https://github.com/bluesky-social/atproto/pull/4964) [`571582e`](https://github.com/bluesky-social/atproto/commit/571582ea9b1aea56938b8f24daaf49e197a987ef) Thanks [@matthieusieben](https://github.com/matthieusieben)! - Remove proto buf generated code from version control
+
+- [#4960](https://github.com/bluesky-social/atproto/pull/4960) [`53b1e07`](https://github.com/bluesky-social/atproto/commit/53b1e0731ee0d13c350dd96cbcab88447eaad441) Thanks [@matthieusieben](https://github.com/matthieusieben)! - Update protobuf to add `.js` extension
+
+- Updated dependencies [[`e6c6343`](https://github.com/bluesky-social/atproto/commit/e6c6343bd3727455bd0da12300bb4929a944e4f1)]:
+  - @atproto/common@0.6.1
+
+## 0.0.26
+
+### Patch Changes
+
+- [#4929](https://github.com/bluesky-social/atproto/pull/4929) [`f01c59f`](https://github.com/bluesky-social/atproto/commit/f01c59f5bd3f75fb8b47a9eecd4858b84033fb7c) Thanks [@devinivy](https://github.com/devinivy)! - **BREAKING:** Drop support for Node.js 18 and 20. Node.js 22 is now the minimum supported version. Docker images now use Node.js 24.
+
+- [#4943](https://github.com/bluesky-social/atproto/pull/4943) [`c459153`](https://github.com/bluesky-social/atproto/commit/c459153395a30ce89e050892c8fab7dc98e019b9) Thanks [@devinivy](https://github.com/devinivy)! - **BREAKING:** Convert to pure ESM. All packages now ship `"type": "module"` with ES module output and Node16 module resolution.
+
+  Node.js 22's `require()` compatibility layer can still load these packages in CommonJS code.
+
+- [#4930](https://github.com/bluesky-social/atproto/pull/4930) [`908bece`](https://github.com/bluesky-social/atproto/commit/908bece169258bff5ad121e5eec157d6ded6f705) Thanks [@devinivy](https://github.com/devinivy)! - Build with TypeScript 6.0.
+
+- Updated dependencies [[`affb50c`](https://github.com/bluesky-social/atproto/commit/affb50c040b497a12631df99a6310f8e78cab557), [`f01c59f`](https://github.com/bluesky-social/atproto/commit/f01c59f5bd3f75fb8b47a9eecd4858b84033fb7c), [`c459153`](https://github.com/bluesky-social/atproto/commit/c459153395a30ce89e050892c8fab7dc98e019b9), [`908bece`](https://github.com/bluesky-social/atproto/commit/908bece169258bff5ad121e5eec157d6ded6f705)]:
+  - @atproto/common@0.6.0
+  - @atproto/syntax@0.6.0
+
+## 0.0.25
+
+### Patch Changes
+
+- [#4745](https://github.com/bluesky-social/atproto/pull/4745) [`efb2b58`](https://github.com/bluesky-social/atproto/commit/efb2b58fb27a242d5308bf15916ee222daa2019b) Thanks [@estrattonbailey](https://github.com/estrattonbailey)! - Add `delete-operations` file and new `deleteOperationsByActorAndNamespace` handler
+
+- Updated dependencies [[`67eb0c1`](https://github.com/bluesky-social/atproto/commit/67eb0c19ac415e762e221b2ccda9f0bcf7b3dd6f)]:
+  - @atproto/syntax@0.5.1
+
+## 0.0.24
+
+### Patch Changes
+
+- Updated dependencies [[`f7c2610`](https://github.com/bluesky-social/atproto/commit/f7c26103a6d4e24e5bedbb6fd908be140420e0dd), [`f7c2610`](https://github.com/bluesky-social/atproto/commit/f7c26103a6d4e24e5bedbb6fd908be140420e0dd), [`f7c2610`](https://github.com/bluesky-social/atproto/commit/f7c26103a6d4e24e5bedbb6fd908be140420e0dd), [`f7c2610`](https://github.com/bluesky-social/atproto/commit/f7c26103a6d4e24e5bedbb6fd908be140420e0dd), [`f7c2610`](https://github.com/bluesky-social/atproto/commit/f7c26103a6d4e24e5bedbb6fd908be140420e0dd), [`f7c2610`](https://github.com/bluesky-social/atproto/commit/f7c26103a6d4e24e5bedbb6fd908be140420e0dd), [`52834ab`](https://github.com/bluesky-social/atproto/commit/52834aba182da8df3611fd9dff924e6c6a3973a7), [`f7c2610`](https://github.com/bluesky-social/atproto/commit/f7c26103a6d4e24e5bedbb6fd908be140420e0dd)]:
+  - @atproto/syntax@0.5.0
+  - @atproto/common@0.5.14
+
+## 0.0.23
+
+### Patch Changes
+
+- Updated dependencies [[`261968fd6`](https://github.com/bluesky-social/atproto/commit/261968fd65014ded613e2bf085d61a7864b8fba7), [`261968fd6`](https://github.com/bluesky-social/atproto/commit/261968fd65014ded613e2bf085d61a7864b8fba7), [`261968fd6`](https://github.com/bluesky-social/atproto/commit/261968fd65014ded613e2bf085d61a7864b8fba7)]:
+  - @atproto/common@0.5.0
+
+## 0.0.22
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @atproto/common@0.4.12
+
+## 0.0.21
+
+### Patch Changes
+
+- Updated dependencies [[`f9dc9aa4c`](https://github.com/bluesky-social/atproto/commit/f9dc9aa4c9eaf2f82d140fbf011a9015e7f1a00d), [`f9dc9aa4c`](https://github.com/bluesky-social/atproto/commit/f9dc9aa4c9eaf2f82d140fbf011a9015e7f1a00d)]:
+  - @atproto/syntax@0.4.1
+
+## 0.0.20
+
+### Patch Changes
+
+- [#3912](https://github.com/bluesky-social/atproto/pull/3912) [`a5cd018bd`](https://github.com/bluesky-social/atproto/commit/a5cd018bd5f237221902ab1b6956b46233c92187) Thanks [@estrattonbailey](https://github.com/estrattonbailey)! - Unify `getPostThreadV2` and `getPostThreadHiddenV2` responses under `app.bsky.unspecced.defs` namespace and a single interface via `threadItemPost`.
+
+## 0.0.19
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @atproto/common@0.4.11
+
+## 0.0.18
+
+### Patch Changes
+
+- Updated dependencies [[`4db923ca1`](https://github.com/bluesky-social/atproto/commit/4db923ca1c4fadd31d41c851933659e5186ee144)]:
+  - @atproto/common@0.4.10
+
+## 0.0.17
+
+### Patch Changes
+
+- Updated dependencies [[`bdbd3c3e3`](https://github.com/bluesky-social/atproto/commit/bdbd3c3e3f8fe8476a3fecac73810554846c938f)]:
+  - @atproto/common@0.4.9
+
+## 0.0.16
+
+### Patch Changes
+
+- Updated dependencies [[`670b6b5de`](https://github.com/bluesky-social/atproto/commit/670b6b5de2bf91e6944761c98eb1126fb6a681ee)]:
+  - @atproto/syntax@0.4.0
+
+## 0.0.15
+
+### Patch Changes
+
+- Updated dependencies [[`850e39843`](https://github.com/bluesky-social/atproto/commit/850e39843cb0ec9ea716675f7568c0c601f45e29)]:
+  - @atproto/syntax@0.3.4
+
+## 0.0.14
+
+### Patch Changes
+
+- Updated dependencies [[`c53d943c8`](https://github.com/bluesky-social/atproto/commit/c53d943c8be5b8886254e020970a68c0f745b14c)]:
+  - @atproto/syntax@0.3.3
+
+## 0.0.13
+
+### Patch Changes
+
+- [#3220](https://github.com/bluesky-social/atproto/pull/3220) [`61dc0d60e`](https://github.com/bluesky-social/atproto/commit/61dc0d60e19b88c6427a54c6d95a391b5f4da7bd) Thanks [@matthieusieben](https://github.com/matthieusieben)! - Apply new linting rules regarding import order
+
+- [#3220](https://github.com/bluesky-social/atproto/pull/3220) [`61dc0d60e`](https://github.com/bluesky-social/atproto/commit/61dc0d60e19b88c6427a54c6d95a391b5f4da7bd) Thanks [@matthieusieben](https://github.com/matthieusieben)! - Update NodeJS engine requirement to >=18.7.0
+
+- Updated dependencies [[`61dc0d60e`](https://github.com/bluesky-social/atproto/commit/61dc0d60e19b88c6427a54c6d95a391b5f4da7bd), [`61dc0d60e`](https://github.com/bluesky-social/atproto/commit/61dc0d60e19b88c6427a54c6d95a391b5f4da7bd)]:
+  - @atproto/common@0.4.8
+  - @atproto/syntax@0.3.2
+
+## 0.0.12
+
+### Patch Changes
+
+- Updated dependencies [[`52c687a05`](https://github.com/bluesky-social/atproto/commit/52c687a05c70d5660fae1de9e1bbc6297f37f1f4)]:
+  - @atproto/common@0.4.7
+
+## 0.0.11
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @atproto/common@0.4.6
+
+## 0.0.10
+
+### Patch Changes
+
+- Updated dependencies [[`588baae12`](https://github.com/bluesky-social/atproto/commit/588baae1212a3cba3bf0d95d2f268e80513fd9c4)]:
+  - @atproto/common@0.4.5
+
+## 0.0.9
+
+### Patch Changes
+
+- Updated dependencies [[`bac9be2d3`](https://github.com/bluesky-social/atproto/commit/bac9be2d3ec904d1f984a871f43cf89aca17289d)]:
+  - @atproto/syntax@0.3.1
+
+## 0.0.8
+
+### Patch Changes
+
+- Updated dependencies [[`4098d9890`](https://github.com/bluesky-social/atproto/commit/4098d9890173f4d6c6512f2d8994eebbf12b5e13)]:
+  - @atproto/common@0.4.4
+
+## 0.0.7
+
+### Patch Changes
+
+- Updated dependencies [[`a07b21151`](https://github.com/bluesky-social/atproto/commit/a07b21151f1850340c4b7797ebb11521b1a6cdf3)]:
+  - @atproto/common@0.4.3
+
+## 0.0.6
+
+### Patch Changes
+
+- Updated dependencies [[`98711a147`](https://github.com/bluesky-social/atproto/commit/98711a147a8674337f605c6368f39fc10c2fae93)]:
+  - @atproto/common@0.4.2
+
+## 0.0.5
+
+### Patch Changes
+
+- [#2648](https://github.com/bluesky-social/atproto/pull/2648) [`76c91f832`](https://github.com/bluesky-social/atproto/commit/76c91f8325363c95e25349e8e236aa2f70e63d5b) Thanks [@dholms](https://github.com/dholms)! - Support for priority notifications
+
+## 0.0.4
+
+### Patch Changes
+
+- [#2633](https://github.com/bluesky-social/atproto/pull/2633) [`acc9093d2`](https://github.com/bluesky-social/atproto/commit/acc9093d2845eba02b68fb2f9db33e4f1b59bb10) Thanks [@matthieusieben](https://github.com/matthieusieben)! - Obfuscate request headers in logs using utils from @atproto/common
+
+- Updated dependencies [[`acc9093d2`](https://github.com/bluesky-social/atproto/commit/acc9093d2845eba02b68fb2f9db33e4f1b59bb10)]:
+  - @atproto/common@0.4.1
+
+## 0.0.3
+
+### Patch Changes
+
+- [#2169](https://github.com/bluesky-social/atproto/pull/2169) [`f689bd51a`](https://github.com/bluesky-social/atproto/commit/f689bd51a2f4e02d4eca40eb2568a1fcb95494e9) Thanks [@matthieusieben](https://github.com/matthieusieben)! - Build system rework, stop bundling dependencies.
+
+- Updated dependencies [[`f689bd51a`](https://github.com/bluesky-social/atproto/commit/f689bd51a2f4e02d4eca40eb2568a1fcb95494e9)]:
+  - @atproto/common@0.4.0
+  - @atproto/syntax@0.3.0
+
+## 0.0.2
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @atproto/common@0.3.4
+  - @atproto/syntax@0.2.1
+
+## 0.0.1
+
+### Patch Changes
+
+- Updated dependencies [[`0c815b964`](https://github.com/bluesky-social/atproto/commit/0c815b964c030aa0f277c40bf9786f130dc320f4)]:
+  - @atproto/syntax@0.2.0

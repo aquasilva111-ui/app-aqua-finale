@@ -1,0 +1,128 @@
+import {useMemo, useState} from 'react'
+import {useWindowDimensions, View} from 'react-native'
+import {msg} from '@lingui/core/macro'
+import {useLingui} from '@lingui/react'
+
+import {useSession} from '#/state/session'
+import {atoms as a, tokens, useTheme} from '#/alf'
+import * as ContextMenu from '#/components/ContextMenu'
+import {
+  useContextMenuContext,
+  useContextMenuMenuContext,
+} from '#/components/ContextMenu/context'
+import {PlusLarge_Stroke2_Corner0_Rounded as PlusIcon} from '#/components/icons/Plus'
+import {type TriggerProps} from '#/components/Menu/types'
+import {Text} from '#/components/Typography'
+import {type chat} from '#/lexicons'
+import {EmojiPopup} from './EmojiPopup'
+import {hasAlreadyReacted, hasReachedReactionLimit} from './util'
+
+export function EmojiReactionPicker({
+  message,
+  onEmojiSelect,
+}: {
+  message: chat.bsky.convo.defs.MessageView
+  children?: TriggerProps['children']
+  onEmojiSelect: (emoji: string) => void
+}) {
+  const {_} = useLingui()
+  const {currentAccount} = useSession()
+  const t = useTheme()
+  const isFromSelf = message.sender?.did === currentAccount?.did
+  const {measurement, close} = useContextMenuContext()
+  const {align, xOffset} = useContextMenuMenuContext()
+  const [layout, setLayout] = useState({width: 0, height: 0})
+  const {width: screenWidth} = useWindowDimensions()
+
+  const position = useMemo(() => {
+    return {
+      x:
+        align === 'left'
+          ? (measurement?.x ?? 0) + xOffset
+          : (measurement?.x ?? 0) + (measurement?.width ?? 0) - layout.width,
+      y: (measurement?.y ?? 0) - tokens.space.xs - layout.height,
+      height: layout.height,
+      width: layout.width,
+    }
+  }, [measurement, align, xOffset, screenWidth, layout])
+
+  const limitReacted = hasReachedReactionLimit(message, currentAccount?.did)
+
+  const bgColor = t.scheme === 'light' ? t.atoms.bg : t.atoms.bg_contrast_25
+
+  return (
+    <View
+      onLayout={evt => setLayout(evt.nativeEvent.layout)}
+      style={[
+        bgColor,
+        a.rounded_full,
+        a.absolute,
+        {bottom: '100%'},
+        isFromSelf ? a.right_0 : a.left_0,
+        a.flex_row,
+        a.p_xs,
+        a.gap_xs,
+        a.mb_xs,
+        a.z_20,
+        a.border,
+        t.atoms.border_contrast_low,
+        a.shadow_md,
+      ]}>
+      {['❤️', '👍', '😆', '👀', '😢'].map(emoji => {
+        const alreadyReacted = hasAlreadyReacted(
+          message,
+          currentAccount?.did,
+          emoji,
+        )
+        return (
+          <ContextMenu.Item
+            position={position}
+            label={_(msg`React with ${emoji}`)}
+            key={emoji}
+            onPress={() => onEmojiSelect(emoji)}
+            unstyled
+            disabled={limitReacted ? !alreadyReacted : false}>
+            {hovered => (
+              <View
+                style={[
+                  a.rounded_full,
+                  hovered
+                    ? {
+                        backgroundColor: alreadyReacted
+                          ? t.palette.negative_100
+                          : t.palette.primary_500,
+                      }
+                    : alreadyReacted
+                      ? {backgroundColor: t.palette.primary_200}
+                      : bgColor,
+                  {height: 40, width: 40},
+                  a.justify_center,
+                  a.align_center,
+                ]}>
+                <Text style={[a.text_center, {fontSize: 30}]} emoji>
+                  {emoji}
+                </Text>
+              </View>
+            )}
+          </ContextMenu.Item>
+        )
+      })}
+      <EmojiPopup
+        onEmojiSelected={emoji => {
+          close()
+          onEmojiSelect(emoji)
+        }}>
+        <View
+          style={[
+            a.rounded_full,
+            t.atoms.bg_contrast_50,
+            {height: 40, width: 40},
+            a.justify_center,
+            a.align_center,
+          ]}>
+          <PlusIcon size="md" fill={t.palette.contrast_1000} />
+        </View>
+      </EmojiPopup>
+    </View>
+  )
+}

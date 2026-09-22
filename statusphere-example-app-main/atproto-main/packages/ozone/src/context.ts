@@ -1,0 +1,410 @@
+import assert from 'node:assert'
+import * as plc from '@did-plc/lib'
+import type express from 'express'
+import { type Keypair, Secp256k1Keypair } from '@atproto/crypto'
+import { type DidCache, IdResolver, MemoryCache } from '@atproto/identity'
+import { Client } from '@atproto/lex'
+import { createServiceAuthHeaders } from '@atproto/xrpc-server'
+import { AssignmentService } from './assignment/index.js'
+import { AuthVerifier } from './auth-verifier.js'
+import { BackgroundQueue } from './background.js'
+import {
+  CommunicationTemplateService,
+  type CommunicationTemplateServiceCreator,
+} from './communication-service/template.js'
+import type { OzoneConfig, OzoneSecrets } from './config/index.js'
+import { BlobDiverter } from './daemon/blob-diverter.js'
+import { EventPusher } from './daemon/index.js'
+import { Database } from './db/index.js'
+import type { ImageInvalidator } from './image-invalidator.js'
+import {
+  ModerationService,
+  type ModerationServiceCreator,
+} from './mod-service/index.js'
+import {
+  ModerationServiceProfile,
+  type ModerationServiceProfileCreator,
+} from './mod-service/profile.js'
+import {
+  StrikeService,
+  type StrikeServiceCreator,
+} from './mod-service/strike.js'
+import { QueueService, type QueueServiceCreator } from './queue/service.js'
+import {
+  ReportStatsService,
+  type ReportStatsServiceCreator,
+} from './report/stats.js'
+import {
+  SafelinkRuleService,
+  type SafelinkRuleServiceCreator,
+} from './safelink/service.js'
+import {
+  ScheduledActionService,
+  type ScheduledActionServiceCreator,
+} from './scheduled-action/service.js'
+import { Sequencer } from './sequencer/sequencer.js'
+import { SetService, type SetServiceCreator } from './set/service.js'
+import {
+  SettingService,
+  type SettingServiceCreator,
+} from './setting/service.js'
+import { TeamService, type TeamServiceCreator } from './team/index.js'
+import {
+  LABELER_HEADER_NAME,
+  type ParsedLabelers,
+  defaultLabelerHeader,
+  getSigningKeyId,
+  parseLabelerHeader,
+} from './util.js'
+import {
+  VerificationIssuer,
+  type VerificationIssuerCreator,
+} from './verification/issuer.js'
+import {
+  VerificationService,
+  type VerificationServiceCreator,
+} from './verification/service.js'
+import type { VideoInvalidator } from './video-invalidator.js'
+
+export type AppContextOptions = {
+  db: Database
+  cfg: OzoneConfig
+  modService: ModerationServiceCreator
+  moderationServiceProfile: ModerationServiceProfileCreator
+  communicationTemplateService: CommunicationTemplateServiceCreator
+  safelinkRuleService: SafelinkRuleServiceCreator
+  scheduledActionService: ScheduledActionServiceCreator
+  queueService: QueueServiceCreator
+  reportStatsService: ReportStatsServiceCreator
+  setService: SetServiceCreator
+  settingService: SettingServiceCreator
+  strikeService: StrikeServiceCreator
+  teamService: TeamServiceCreator
+  appviewClient: Client
+  pdsClient: Client | undefined
+  chatClient: Client | undefined
+  blobDiverter?: BlobDiverter
+  signingKey: Keypair
+  signingKeyId: number
+  didCache: DidCache
+  idResolver: IdResolver
+  imgInvalidator?: ImageInvalidator
+  videoInvalidator?: VideoInvalidator
+  backgroundQueue: BackgroundQueue
+  sequencer: Sequencer
+  assignmentService: AssignmentService
+  authVerifier: AuthVerifier
+  verificationService: VerificationServiceCreator
+  verificationIssuer: VerificationIssuerCreator
+}
+
+export class AppContext {
+  constructor(private opts: AppContextOptions) {}
+
+  static async fromConfig(
+    cfg: OzoneConfig,
+    secrets: OzoneSecrets,
+    overrides?: Partial<AppContextOptions>,
+  ): Promise<AppContext> {
+    const db = new Database({
+      url: cfg.db.postgresUrl,
+      schema: cfg.db.postgresSchema,
+      poolSize: cfg.db.poolSize,
+      poolMaxUses: cfg.db.poolMaxUses,
+      poolIdleTimeoutMs: cfg.db.poolIdleTimeoutMs,
+    })
+    const signingKey = await Secp256k1Keypair.import(secrets.signingKeyHex)
+    const signingKeyId = await getSigningKeyId(db, signingKey.did())
+    // Trust internal services to send us well-formed responses
+    const clientOpts = { strictResponseProcessing: false }
+    const appviewClient = new Client({ service: cfg.appview.url }, clientOpts)
+    // OZONE_PDS_HEADERS is applied only to the operator-configured PDS.
+    const pdsClient = cfg.pds
+      ? new Client(
+          { service: cfg.pds.url },
+          { ...clientOpts, headers: secrets.pdsHeaders },
+        )
+      : undefined
+    const chatClient = cfg.chat
+      ? new Client({ service: cfg.chat.url }, clientOpts)
+      : undefined
+
+    const didCache = new MemoryCache(
+      cfg.identity.cacheStaleTTL,
+      cfg.identity.cacheMaxTTL,
+    )
+    const idResolver = new IdResolver({
+      plcUrl: cfg.identity.plcUrl,
+      didCache,
+      fetch: cfg.service.devMode ? globalThis.fetch : undefined,
+    })
+
+    const createAuthHeaders = (aud: string, lxm: string) =>
+      createServiceAuthHeaders({
+        iss: `${cfg.service.did}#atproto_labeler`,
+        aud,
+        lxm,
+        keypair: signingKey,
+      })
+
+    const backgroundQueue = new BackgroundQueue(db, { concurrency: 20 })
+    const blobDiverter = cfg.blobDivert
+      ? new BlobDiverter(db, {
+          idResolver,
+          serviceConfig: cfg.blobDivert,
+          devMode: cfg.service.devMode,
+        })
+      : undefined
+    const eventPusher = new EventPusher(db, createAuthHeaders, {
+      appview: cfg.appview.pushEvents ? cfg.appview : undefined,
+      pds: cfg.pds ? { ...cfg.pds, headers: secrets.pdsHeaders } : undefined,
+    })
+
+    const communicationTemplateService = CommunicationTemplateService.creator()
+    const safelinkRuleService = SafelinkRuleService.creator()
+    const scheduledActionService = ScheduledActionService.creator()
+    const teamService = TeamService.creator(
+      appviewClient,
+      cfg.appview.did,
+      createAuthHeaders,
+    )
+    const queueService = QueueService.creator()
+    const reportStatsService = ReportStatsService.creator()
+    const setService = SetService.creator()
+    const settingService = SettingService.creator()
+    const strikeService = StrikeService.creator()
+    const verificationService = VerificationService.creator()
+    const verificationIssuer = VerificationIssuer.creator()
+    const moderationServiceProfile = ModerationServiceProfile.creator(
+      cfg,
+      appviewClient,
+    )
+    const modService = ModerationService.creator(
+      signingKey,
+      signingKeyId,
+      cfg,
+      backgroundQueue,
+      idResolver,
+      eventPusher,
+      appviewClient,
+      createAuthHeaders,
+      strikeService,
+      overrides?.imgInvalidator,
+      overrides?.videoInvalidator,
+    )
+    const assignmentService = AssignmentService.creator(
+      {
+        queueDurationMs: cfg.assignments.queueDurationMs,
+        reportDurationMs: cfg.assignments.reportDurationMs,
+      },
+      queueService,
+      teamService,
+    )(db)
+
+    const sequencer = new Sequencer(modService(db))
+
+    const authVerifier = new AuthVerifier(idResolver, {
+      serviceDid: cfg.service.did,
+      adminPassword: secrets.adminPassword,
+      teamService: teamService(db),
+    })
+
+    return new AppContext({
+      db,
+      cfg,
+      modService,
+      moderationServiceProfile,
+      communicationTemplateService,
+      safelinkRuleService,
+      scheduledActionService,
+      teamService,
+      queueService,
+      reportStatsService,
+      setService,
+      settingService,
+      strikeService,
+      appviewClient,
+      pdsClient,
+      chatClient,
+      signingKey,
+      signingKeyId,
+      didCache,
+      idResolver,
+      backgroundQueue,
+      sequencer,
+      assignmentService,
+      authVerifier,
+      blobDiverter,
+      verificationService,
+      verificationIssuer,
+      ...(overrides ?? {}),
+    })
+  }
+
+  assignPort(port: number) {
+    assert(
+      !this.cfg.service.port || this.cfg.service.port === port,
+      'Conflicting port in config',
+    )
+    this.opts.cfg.service.port = port
+  }
+
+  get db(): Database {
+    return this.opts.db
+  }
+
+  get cfg(): OzoneConfig {
+    return this.opts.cfg
+  }
+
+  get modService(): ModerationServiceCreator {
+    return this.opts.modService
+  }
+
+  get blobDiverter(): BlobDiverter | undefined {
+    return this.opts.blobDiverter
+  }
+
+  get communicationTemplateService(): CommunicationTemplateServiceCreator {
+    return this.opts.communicationTemplateService
+  }
+
+  get safelinkRuleService(): SafelinkRuleServiceCreator {
+    return this.opts.safelinkRuleService
+  }
+
+  get scheduledActionService(): ScheduledActionServiceCreator {
+    return this.opts.scheduledActionService
+  }
+
+  get teamService(): TeamServiceCreator {
+    return this.opts.teamService
+  }
+
+  get queueService(): QueueServiceCreator {
+    return this.opts.queueService
+  }
+
+  get reportStatsService(): ReportStatsServiceCreator {
+    return this.opts.reportStatsService
+  }
+
+  get setService(): SetServiceCreator {
+    return this.opts.setService
+  }
+
+  get settingService(): SettingServiceCreator {
+    return this.opts.settingService
+  }
+
+  get strikeService(): StrikeServiceCreator {
+    return this.opts.strikeService
+  }
+
+  get verificationService(): VerificationServiceCreator {
+    return this.opts.verificationService
+  }
+
+  get verificationIssuer(): VerificationIssuerCreator {
+    return this.opts.verificationIssuer
+  }
+
+  get moderationServiceProfile(): ModerationServiceProfileCreator {
+    return this.opts.moderationServiceProfile
+  }
+
+  get appviewClient(): Client {
+    return this.opts.appviewClient
+  }
+
+  get pdsClient(): Client | undefined {
+    return this.opts.pdsClient
+  }
+
+  get chatClient(): Client | undefined {
+    return this.opts.chatClient
+  }
+
+  get signingKey(): Keypair {
+    return this.opts.signingKey
+  }
+
+  get signingKeyId(): number {
+    return this.opts.signingKeyId
+  }
+
+  get plcClient(): plc.Client {
+    return new plc.Client(this.cfg.identity.plcUrl)
+  }
+
+  get didCache(): DidCache {
+    return this.opts.didCache
+  }
+
+  get idResolver(): IdResolver {
+    return this.opts.idResolver
+  }
+
+  get backgroundQueue(): BackgroundQueue {
+    return this.opts.backgroundQueue
+  }
+
+  get sequencer(): Sequencer {
+    return this.opts.sequencer
+  }
+
+  get assignmentService(): AssignmentService {
+    return this.opts.assignmentService
+  }
+
+  get authVerifier(): AuthVerifier {
+    return this.opts.authVerifier
+  }
+
+  async serviceAuthHeaders(aud: string, lxm: string) {
+    const iss = `${this.cfg.service.did}#atproto_labeler`
+    return createServiceAuthHeaders({
+      iss,
+      aud,
+      lxm,
+      keypair: this.signingKey,
+    })
+  }
+
+  async pdsAuth(lxm: string) {
+    if (!this.cfg.pds) {
+      return undefined
+    }
+    return this.serviceAuthHeaders(this.cfg.pds.did, lxm)
+  }
+
+  async appviewAuth(lxm: string) {
+    return this.serviceAuthHeaders(this.cfg.appview.did, lxm)
+  }
+
+  async chatAuth(lxm: string) {
+    if (!this.cfg.chat) {
+      throw new Error('No chat service configured')
+    }
+    return this.serviceAuthHeaders(this.cfg.chat.did, lxm)
+  }
+
+  devOverride(overrides: Partial<AppContextOptions>) {
+    this.opts = {
+      ...this.opts,
+      ...overrides,
+    }
+  }
+
+  reqLabelers(req: express.Request): ParsedLabelers {
+    const val = req.header(LABELER_HEADER_NAME)
+    let parsed: ParsedLabelers | null
+    try {
+      parsed = parseLabelerHeader(val, this.cfg.service.did)
+    } catch (err) {
+      parsed = null
+    }
+    if (!parsed) return defaultLabelerHeader([])
+    return parsed
+  }
+}

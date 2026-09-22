@@ -1,0 +1,168 @@
+import { mapDefined } from '@atproto/common'
+import type { AtUriString, DidString } from '@atproto/syntax'
+import { InvalidRequestError, type Server } from '@atproto/xrpc-server'
+import type { AppContext } from '../../../../context.js'
+import {
+  type HydrateCtx,
+  type Hydrator,
+  mergeStates,
+} from '../../../../hydration/hydrator.js'
+import { app } from '../../../../lexicons/index.js'
+import {
+  type HydrationFnInput,
+  type PresentationFnInput,
+  type RulesFnInput,
+  type SkeletonFnInput,
+  createPipeline,
+} from '../../../../pipeline.js'
+import { uriToDid as didFromUri } from '../../../../util/uris.js'
+import type { Views } from '../../../../views/index.js'
+import { clearlyBadCursor, fillPage, resHeaders } from '../../../util.js'
+
+export default function (server: Server, ctx: AppContext) {
+  const getFollowers = createPipeline(
+    skeleton,
+    hydration,
+    noBlocks,
+    presentation,
+  )
+  server.add(app.bsky.graph.getFollowers, {
+    auth: ctx.authVerifier.optionalStandardOrRole,
+    handler: async ({ params, auth, req }) => {
+      const { viewer, includeTakedowns, skipViewerBlocks } =
+        ctx.authVerifier.parseCreds(auth)
+      const labelers = ctx.reqLabelers(req)
+      const hydrateCtx = await ctx.hydrator.createContext({
+        labelers,
+        viewer,
+        includeTakedowns,
+        skipViewerBlocks,
+      })
+
+      const result = await fillPage({
+        cursor: params.cursor,
+        limit: params.limit,
+        fetch: ({ cursor, limit }) =>
+          getFollowers(
+            {
+              ...params,
+              cursor,
+              limit,
+              hydrateCtx,
+            },
+            ctx,
+          ),
+        items: (r) => r.followers,
+      })
+
+      return {
+        encoding: 'application/json',
+        body: result,
+        headers: resHeaders({ labelers: hydrateCtx.labelers }),
+      }
+    },
+  })
+}
+
+const skeleton = async (
+  input: SkeletonFnInput<Context, Params>,
+): Promise<SkeletonState> => {
+  const { params, ctx } = input
+  const [subjectDid] = await ctx.hydrator.actor.getDidsDefined([params.actor])
+  if (!subjectDid) {
+    throw new InvalidRequestError(`Actor not found: ${params.actor}`)
+  }
+  if (clearlyBadCursor(params.cursor)) {
+    return { subjectDid, followUris: [] }
+  }
+  const { followers, cursor } = await ctx.hydrator.graph.getActorFollowers({
+    did: subjectDid,
+    cursor: params.cursor,
+    limit: params.limit,
+    sort: params.sort,
+  })
+  return {
+    subjectDid,
+    followUris: followers.map((f) => f.uri as AtUriString),
+    cursor,
+  }
+}
+
+const hydration = async (
+  input: HydrationFnInput<Context, Params, SkeletonState>,
+) => {
+  const { ctx, params, skeleton } = input
+  const { followUris, subjectDid } = skeleton
+  const followState = await ctx.hydrator.hydrateFollows(
+    followUris,
+    params.hydrateCtx,
+  )
+  const dids = [subjectDid]
+  if (followState.follows) {
+    for (const [uri, follow] of followState.follows) {
+      if (follow) {
+        dids.push(didFromUri(uri))
+      }
+    }
+  }
+  const profileState = await ctx.hydrator.hydrateProfiles(
+    dids,
+    params.hydrateCtx,
+  )
+  return mergeStates(followState, profileState)
+}
+
+const noBlocks = (input: RulesFnInput<Context, Params, SkeletonState>) => {
+  const { skeleton, params, hydration, ctx } = input
+  const viewer = params.hydrateCtx.viewer
+  skeleton.followUris = skeleton.followUris.filter((followUri) => {
+    const followerDid = didFromUri(followUri)
+    return (
+      !hydration.followBlocks?.get(followUri) &&
+      (!viewer || !ctx.views.viewerBlockExists(followerDid, hydration))
+    )
+  })
+  return skeleton
+}
+
+const presentation = (
+  input: PresentationFnInput<Context, Params, SkeletonState>,
+) => {
+  const { ctx, hydration, skeleton, params } = input
+  const { subjectDid, followUris, cursor } = skeleton
+  const isNoHosted = (did: DidString) =>
+    ctx.views.actorIsNoHosted(did, hydration)
+
+  const subject = ctx.views.profile(subjectDid, hydration)
+  if (
+    !subject ||
+    (!params.hydrateCtx.includeTakedowns && isNoHosted(subjectDid))
+  ) {
+    throw new InvalidRequestError(`Actor not found: ${params.actor}`)
+  }
+
+  const followers = mapDefined(followUris, (followUri) => {
+    const followerDid = didFromUri(followUri)
+    if (!params.hydrateCtx.includeTakedowns && isNoHosted(followerDid)) {
+      return
+    }
+    return ctx.views.profile(didFromUri(followUri), hydration)
+  })
+
+  return { followers, subject, cursor }
+}
+
+type Context = {
+  hydrator: Hydrator
+  views: Views
+}
+
+type Params = app.bsky.graph.getFollowers.$Params & {
+  hydrateCtx: HydrateCtx
+}
+
+type SkeletonState = {
+  subjectDid: DidString
+  followUris: AtUriString[]
+  cursor?: string
+}

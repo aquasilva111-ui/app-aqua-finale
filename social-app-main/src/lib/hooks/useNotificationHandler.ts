@@ -1,0 +1,505 @@
+import {useEffect} from 'react'
+import * as Notifications from 'expo-notifications'
+import {AtUri} from '@atproto/syntax'
+import {useLingui} from '@lingui/react/macro'
+import {CommonActions, useNavigation} from '@react-navigation/native'
+import {useQueryClient} from '@tanstack/react-query'
+
+import {useAccountSwitcher} from '#/lib/hooks/useAccountSwitcher'
+import {logger as notyLogger} from '#/lib/notifications/util'
+import {type NavigationProp} from '#/lib/routes/types'
+import {useCurrentConvoId} from '#/state/messages/current-convo-id'
+import {RQKEY as RQKEY_NOTIFS} from '#/state/queries/notifications/feed'
+import {invalidateCachedUnreadPage} from '#/state/queries/notifications/unread'
+import {truncateAndInvalidate} from '#/state/queries/util'
+import {useSession} from '#/state/session'
+import {useLoggedOutViewControls} from '#/state/shell/logged-out'
+import {useCloseAllActiveElements} from '#/state/util'
+import {useAnalytics} from '#/analytics'
+import {IS_ANDROID, IS_IOS} from '#/env'
+import {resetToTab} from '#/Navigation'
+import {router} from '#/routes'
+
+export type NotificationReason =
+  | 'like'
+  | 'repost'
+  | 'follow'
+  | 'mention'
+  | 'reply'
+  | 'quote'
+  | 'chat-message'
+  | 'chat-reaction'
+  | 'chat-added-to-group'
+  | 'chat-removed-from-group'
+  | 'chat-join-request-rejected'
+  | 'starterpack-joined'
+  | 'like-via-repost'
+  | 'repost-via-repost'
+  | 'verified'
+  | 'unverified'
+  | 'subscribed-post'
+
+type ChatNotificationReason = Extract<NotificationReason, `chat-${string}`>
+
+/**
+ * Manually overridden type, but retains the possibility of
+ * `notification.request.trigger.payload` being `undefined`, as specified in
+ * the source types.
+ */
+export type NotificationPayload =
+  | undefined
+  | {
+      reason: Exclude<NotificationReason, ChatNotificationReason>
+      uri: string
+      subject: string
+      recipientDid: string
+    }
+  | {
+      reason: 'chat-message'
+      convoId: string
+      messageId: string
+      recipientDid: string
+    }
+  | {
+      reason: 'chat-reaction'
+      convoId: string
+      messageId: string
+      recipientDid: string
+    }
+  | {
+      reason:
+        | 'chat-added-to-group'
+        | 'chat-removed-from-group'
+        | 'chat-join-request-rejected'
+      convoId: string
+      recipientDid: string
+    }
+
+export type ChatNotificationPayload = Extract<
+  NonNullable<NotificationPayload>,
+  {reason: ChatNotificationReason}
+>
+
+export function isChatNotificationPayload(
+  payload: NonNullable<NotificationPayload>,
+): payload is ChatNotificationPayload {
+  return payload.reason.startsWith('chat-')
+}
+
+const DEFAULT_HANDLER_OPTIONS = {
+  shouldShowBanner: false,
+  shouldShowList: false,
+  shouldPlaySound: false,
+  shouldSetBadge: true,
+} satisfies Notifications.NotificationBehavior
+
+/**
+ * Cached notification payload if we handled a notification while the user was
+ * using a different account. This is consumed after we finish switching
+ * accounts.
+ */
+let storedAccountSwitchPayload: NotificationPayload
+
+/**
+ * Used to ensure we don't handle the same notification twice
+ */
+let lastHandledNotificationDateDedupe = 0
+
+export function useNotificationsHandler() {
+  const ax = useAnalytics()
+  // eslint-disable-next-line react-compiler/react-compiler
+  const logger = ax.logger.useChild(ax.logger.Context.Notifications)
+  const queryClient = useQueryClient()
+  const {currentAccount, accounts} = useSession()
+  const {onPressSwitchAccount} = useAccountSwitcher()
+  const navigation = useNavigation<NavigationProp>()
+  const {currentConvoId} = useCurrentConvoId()
+  const {setShowLoggedOut} = useLoggedOutViewControls()
+  const closeAllActiveElements = useCloseAllActiveElements()
+  const {t: l} = useLingui()
+
+  // On Android, we cannot control which sound is used for a notification on Android
+  // 28 or higher. Instead, we have to configure a notification channel ahead of time
+  // which has the sounds we want in the configuration for that channel. These two
+  // channels allow for the mute/unmute functionality we want for the background
+  // handler.
+  useEffect(() => {
+    if (!IS_ANDROID) return
+    // assign both chat notifications to a group
+    // NOTE: I don't think that it will retroactively move them into the group
+    // if the channels already exist. no big deal imo -sfn
+    const CHAT_GROUP = 'chat'
+    void Notifications.setNotificationChannelGroupAsync(CHAT_GROUP, {
+      name: l`Chat`,
+      description: l`You can choose whether chat notifications have sound in the chat settings within the app`,
+    })
+    void Notifications.setNotificationChannelAsync('chat-messages', {
+      name: l`Chat messages - sound`,
+      groupId: CHAT_GROUP,
+      importance: Notifications.AndroidImportance.MAX,
+      sound: 'dm.mp3',
+      showBadge: true,
+      vibrationPattern: [250],
+      lockscreenVisibility: Notifications.AndroidNotificationVisibility.PRIVATE,
+    })
+    void Notifications.setNotificationChannelAsync('chat-messages-muted', {
+      name: l`Chat messages - silent`,
+      groupId: CHAT_GROUP,
+      importance: Notifications.AndroidImportance.MAX,
+      sound: null,
+      showBadge: true,
+      vibrationPattern: [250],
+      lockscreenVisibility: Notifications.AndroidNotificationVisibility.PRIVATE,
+    })
+
+    void Notifications.setNotificationChannelAsync(
+      'like' satisfies NotificationReason,
+      {
+        name: l`Likes`,
+        importance: Notifications.AndroidImportance.HIGH,
+      },
+    )
+    void Notifications.setNotificationChannelAsync(
+      'repost' satisfies NotificationReason,
+      {
+        name: l`Reposts`,
+        importance: Notifications.AndroidImportance.HIGH,
+      },
+    )
+    void Notifications.setNotificationChannelAsync(
+      'reply' satisfies NotificationReason,
+      {
+        name: l`Replies`,
+        importance: Notifications.AndroidImportance.HIGH,
+      },
+    )
+    void Notifications.setNotificationChannelAsync(
+      'mention' satisfies NotificationReason,
+      {
+        name: l`Mentions`,
+        importance: Notifications.AndroidImportance.HIGH,
+      },
+    )
+    void Notifications.setNotificationChannelAsync(
+      'quote' satisfies NotificationReason,
+      {
+        name: l`Quotes`,
+        importance: Notifications.AndroidImportance.HIGH,
+      },
+    )
+    void Notifications.setNotificationChannelAsync(
+      'follow' satisfies NotificationReason,
+      {
+        name: l`New followers`,
+        importance: Notifications.AndroidImportance.HIGH,
+      },
+    )
+    void Notifications.setNotificationChannelAsync(
+      'like-via-repost' satisfies NotificationReason,
+      {
+        name: l`Likes of your reposts`,
+        importance: Notifications.AndroidImportance.HIGH,
+      },
+    )
+    void Notifications.setNotificationChannelAsync(
+      'repost-via-repost' satisfies NotificationReason,
+      {
+        name: l`Reposts of your reposts`,
+        importance: Notifications.AndroidImportance.HIGH,
+      },
+    )
+    void Notifications.setNotificationChannelAsync(
+      'subscribed-post' satisfies NotificationReason,
+      {
+        name: l`Activity from others`,
+        importance: Notifications.AndroidImportance.HIGH,
+      },
+    )
+  }, [l])
+
+  useEffect(() => {
+    const handleNotification = (payload?: NotificationPayload) => {
+      if (!payload) return
+
+      if (isChatNotificationPayload(payload)) {
+        logger.debug(`useNotificationsHandler: handling chat notification`, {
+          payload,
+        })
+
+        if (
+          payload.recipientDid !== currentAccount?.did &&
+          !storedAccountSwitchPayload
+        ) {
+          storePayloadForAccountSwitch(payload)
+          closeAllActiveElements()
+
+          const account = accounts.find(a => a.did === payload.recipientDid)
+          if (account) {
+            void onPressSwitchAccount(account, 'Notification')
+          } else {
+            setShowLoggedOut(true)
+          }
+        } else if (
+          payload.reason === 'chat-message' ||
+          payload.reason === 'chat-reaction' ||
+          payload.reason === 'chat-added-to-group'
+        ) {
+          // chat-added-to-group routes to the convo because the recipient was
+          // just added and now has access.
+          navigation.dispatch(state => {
+            if (state.routes[0].name === 'Messages') {
+              if (
+                state.routes[state.routes.length - 1].name ===
+                'MessagesConversation'
+              ) {
+                return CommonActions.reset({
+                  ...state,
+                  routes: [
+                    ...state.routes.slice(0, state.routes.length - 1),
+                    {
+                      name: 'MessagesConversation',
+                      params: {
+                        conversation: payload.convoId,
+                      },
+                    },
+                  ],
+                })
+              } else {
+                return CommonActions.navigate('MessagesConversation', {
+                  conversation: payload.convoId,
+                })
+              }
+            } else {
+              return CommonActions.navigate('MessagesTab', {
+                screen: 'Messages',
+                params: {
+                  pushToConversation: payload.convoId,
+                },
+              })
+            }
+          })
+        } else {
+          // chat-removed-from-group, chat-join-request-rejected: the convo is
+          // no longer accessible to the recipient, so just open the list.
+          navigation.dispatch(
+            CommonActions.navigate('MessagesTab', {screen: 'Messages'}),
+          )
+        }
+      } else {
+        const url = notificationToURL(payload)
+
+        if (url === '/notifications') {
+          resetToTab('NotificationsTab')
+        } else if (url) {
+          const [screen, params] = router.matchPath(url)
+          // @ts-expect-error router is not typed :/ -sfn
+          navigation.navigate('HomeTab', {screen, params})
+          logger.debug(`useNotificationsHandler: navigate`, {
+            screen,
+            params,
+          })
+        }
+      }
+    }
+
+    Notifications.setNotificationHandler({
+      handleNotification: e => {
+        const payload = getNotificationPayload(e)
+
+        if (!payload) return Promise.resolve(DEFAULT_HANDLER_OPTIONS)
+
+        logger.debug('useNotificationsHandler: incoming', {e, payload})
+
+        if (
+          isChatNotificationPayload(payload) &&
+          payload.recipientDid === currentAccount?.did
+        ) {
+          // chat-removed-from-group / chat-join-request-rejected always alert,
+          // even if the recipient is currently viewing the affected convo -
+          // they need to know they were removed/rejected.
+          const shouldAlert =
+            payload.reason === 'chat-removed-from-group' ||
+            payload.reason === 'chat-join-request-rejected' ||
+            payload.convoId !== currentConvoId
+          return Promise.resolve({
+            shouldShowList: shouldAlert,
+            shouldShowBanner: shouldAlert,
+            shouldPlaySound: false,
+            shouldSetBadge: false,
+          } satisfies Notifications.NotificationBehavior)
+        }
+
+        // Any notification other than a chat message should invalidate the unread page
+        invalidateCachedUnreadPage()
+        return Promise.resolve(DEFAULT_HANDLER_OPTIONS)
+      },
+    })
+
+    const responseReceivedListener =
+      Notifications.addNotificationResponseReceivedListener(e => {
+        if (e.notification.date === lastHandledNotificationDateDedupe) return
+        lastHandledNotificationDateDedupe = e.notification.date
+
+        logger.debug('useNotificationsHandler: response received', {
+          actionIdentifier: e.actionIdentifier,
+        })
+
+        if (e.actionIdentifier !== Notifications.DEFAULT_ACTION_IDENTIFIER) {
+          return
+        }
+
+        const payload = getNotificationPayload(e.notification)
+
+        if (payload) {
+          logger.debug(
+            'User pressed a notification, opening notifications tab',
+            {},
+          )
+          ax.metric('notifications:openApp', {
+            reason: payload.reason,
+            causedBoot: false,
+          })
+
+          invalidateCachedUnreadPage()
+          void truncateAndInvalidate(queryClient, RQKEY_NOTIFS('all'))
+
+          if (
+            payload.reason === 'mention' ||
+            payload.reason === 'quote' ||
+            payload.reason === 'reply'
+          ) {
+            void truncateAndInvalidate(queryClient, RQKEY_NOTIFS('mentions'))
+          }
+
+          logger.debug('Notifications: handleNotification', {
+            content: e.notification.request.content,
+            payload: payload,
+          })
+
+          handleNotification(payload)
+          void Notifications.dismissAllNotificationsAsync()
+          // Also clear the native `lastResponse` cache. Otherwise a subsequent
+          // `getLastNotificationResponse()` (e.g. on an account-switch remount,
+          // which re-runs `handlePushNotificationEntry`) would replay this
+          // payload and ping-pong the user back to the previous account/chat.
+          try {
+            Notifications.clearLastNotificationResponse()
+          } catch (error) {
+            notyLogger.error(
+              `useNotificationsHandler: error clearing notification response`,
+              {error},
+            )
+          }
+        } else {
+          logger.error('useNotificationsHandler: received no payload', {
+            identifier: e.notification.request.identifier,
+          })
+        }
+      })
+
+    // Whenever there's a stored payload, that means we had to switch accounts before handling the notification.
+    // Whenever currentAccount changes, we should try to handle it again.
+    if (
+      storedAccountSwitchPayload &&
+      isChatNotificationPayload(storedAccountSwitchPayload) &&
+      currentAccount?.did === storedAccountSwitchPayload.recipientDid
+    ) {
+      handleNotification(storedAccountSwitchPayload)
+      storedAccountSwitchPayload = undefined
+    }
+
+    return () => {
+      responseReceivedListener.remove()
+    }
+  }, [
+    ax,
+    logger,
+    queryClient,
+    currentAccount,
+    currentConvoId,
+    accounts,
+    closeAllActiveElements,
+    currentAccount?.did,
+    navigation,
+    onPressSwitchAccount,
+    setShowLoggedOut,
+  ])
+}
+
+export function storePayloadForAccountSwitch(payload: NotificationPayload) {
+  storedAccountSwitchPayload = payload
+}
+
+export function getNotificationPayload(
+  e: Notifications.Notification,
+): NotificationPayload | null {
+  if (
+    e.request.trigger == null ||
+    typeof e.request.trigger !== 'object' ||
+    !('type' in e.request.trigger) ||
+    e.request.trigger.type !== 'push'
+  ) {
+    return null
+  }
+
+  const payload = (
+    IS_IOS ? e.request.trigger.payload : e.request.content.data
+  ) as NotificationPayload
+
+  if (payload && payload.reason) {
+    return payload
+  } else {
+    if (payload) {
+      notyLogger.debug('getNotificationPayload: received unknown payload', {
+        payload,
+        identifier: e.request.identifier,
+      })
+    }
+    return null
+  }
+}
+
+export function notificationToURL(payload: NotificationPayload): string | null {
+  switch (payload?.reason) {
+    case 'like':
+    case 'repost':
+    case 'like-via-repost':
+    case 'repost-via-repost': {
+      const urip = new AtUri(payload.subject)
+      if (urip.collection === 'app.bsky.feed.post') {
+        return `/profile/${urip.host}/post/${urip.rkey}`
+      } else {
+        return '/notifications'
+      }
+    }
+    case 'reply':
+    case 'quote':
+    case 'mention':
+    case 'subscribed-post': {
+      const urip = new AtUri(payload.uri)
+      if (urip.collection === 'app.bsky.feed.post') {
+        return `/profile/${urip.host}/post/${urip.rkey}`
+      } else {
+        return '/notifications'
+      }
+    }
+    case 'follow':
+    case 'starterpack-joined': {
+      const urip = new AtUri(payload.uri)
+      return `/profile/${urip.host}`
+    }
+    case 'chat-message':
+    case 'chat-reaction':
+    case 'chat-added-to-group':
+    case 'chat-removed-from-group':
+    case 'chat-join-request-rejected':
+      // should be handled separately
+      return null
+    case 'verified':
+    case 'unverified':
+      return '/notifications'
+    default:
+      // do nothing if we don't know what to do with it
+      return null
+  }
+}

@@ -1,0 +1,371 @@
+import {AtUri} from '@atproto/syntax'
+import {useLingui} from '@lingui/react/macro'
+import {Trans} from '@lingui/react/macro'
+import {useNavigation} from '@react-navigation/native'
+
+import {type NavigationProp} from '#/lib/routes/types'
+import {shareUrl} from '#/lib/sharing'
+import {toShareUrl} from '#/lib/strings/url-helpers'
+import {logger} from '#/logger'
+import {
+  useListBlockMutation,
+  useListDeleteMutation,
+  useListMuteMutation,
+  useReferenceListOptOutMutation,
+} from '#/state/queries/list'
+import {useRemoveFeedMutation} from '#/state/queries/preferences'
+import {useSession} from '#/state/session'
+import {Button, ButtonIcon} from '#/components/Button'
+import {useDialogControl} from '#/components/Dialog'
+import {CreateOrEditListDialog} from '#/components/dialogs/lists/CreateOrEditListDialog'
+import {ArrowOutOfBoxModified_Stroke2_Corner2_Rounded as ShareIcon} from '#/components/icons/ArrowOutOfBox'
+import {ChainLink_Stroke2_Corner0_Rounded as ChainLink} from '#/components/icons/ChainLink'
+import {DotGrid3x1_Stroke2_Corner0_Rounded as DotGridIcon} from '#/components/icons/DotGrid'
+import {PencilLine_Stroke2_Corner0_Rounded as PencilLineIcon} from '#/components/icons/Pencil'
+import {PersonCheck_Stroke2_Corner0_Rounded as PersonCheckIcon} from '#/components/icons/Person'
+import {Pin_Stroke2_Corner0_Rounded as PinIcon} from '#/components/icons/Pin'
+import {SpeakerVolumeFull_Stroke2_Corner0_Rounded as UnmuteIcon} from '#/components/icons/Speaker'
+import {Trash_Stroke2_Corner0_Rounded as TrashIcon} from '#/components/icons/Trash'
+import {Warning_Stroke2_Corner0_Rounded as WarningIcon} from '#/components/icons/Warning'
+import * as Menu from '#/components/Menu'
+import {
+  ReportDialog,
+  useReportDialogControl,
+} from '#/components/moderation/ReportDialog'
+import * as Prompt from '#/components/Prompt'
+import * as Toast from '#/components/Toast'
+import {useAnalytics} from '#/analytics'
+import {IS_WEB} from '#/env'
+import {app} from '#/lexicons'
+
+export function MoreOptionsMenu({
+  list,
+  savedFeedConfig,
+}: {
+  list: app.bsky.graph.defs.ListView
+  savedFeedConfig?: app.bsky.actor.defs.SavedFeed
+}) {
+  const {t: l} = useLingui()
+  const ax = useAnalytics()
+  const {currentAccount} = useSession()
+  const editListDialogControl = useDialogControl()
+  const deleteListPromptControl = useDialogControl()
+  const reportDialogControl = useReportDialogControl()
+  const optOutDialogControl = useDialogControl()
+  const navigation = useNavigation<NavigationProp>()
+
+  const {mutateAsync: removeSavedFeed} = useRemoveFeedMutation()
+  const {mutateAsync: deleteList} = useListDeleteMutation()
+  const {mutateAsync: muteList} = useListMuteMutation()
+  const {mutateAsync: blockList} = useListBlockMutation()
+
+  const isCurateList = list.purpose === app.bsky.graph.defs.curatelist.value
+  const isModList = list.purpose === app.bsky.graph.defs.modlist.value
+  const isReferenceList =
+    list.purpose === app.bsky.graph.defs.referencelist.value
+  const isBlocking = !!list.viewer?.blocked
+  const isMuting = !!list.viewer?.muted
+  const isPinned = Boolean(savedFeedConfig?.pinned)
+  const isOwner = currentAccount?.did === list.creator.did
+  const referenceListOptOut = list.viewer?.referenceListOptOut
+  const {mutate: setReferenceListOptOut, isPending: isOptOutPending} =
+    useReferenceListOptOutMutation({
+      list,
+      onSuccess: action => {
+        ax.metric('starterPack:optOut', {
+          starterPack: list.uri,
+          action,
+        })
+        Toast.show(
+          action === 'optOut'
+            ? l`Opted out of Starter Pack`
+            : l`Opt-out undone`,
+        )
+      },
+      onError: error => {
+        logger.error('Failed to update Starter Pack opt-out', {
+          safeMessage: error,
+        })
+        Toast.show(l`Failed to update Starter Pack opt-out`, {
+          type: 'error',
+        })
+      },
+    })
+
+  const onPressShare = () => {
+    const {rkey} = new AtUri(list.uri)
+    const url = toShareUrl(`/profile/${list.creator.did}/lists/${rkey}`)
+    void shareUrl(url)
+  }
+
+  const onRemoveFromSavedFeeds = async () => {
+    if (!savedFeedConfig) return
+    try {
+      await removeSavedFeed(savedFeedConfig)
+      Toast.show(l`Removed from your feeds`)
+    } catch (e) {
+      Toast.show(l`There was an issue contacting the server`, {
+        type: 'error',
+      })
+      logger.error('Failed to remove pinned list', {message: e})
+    }
+  }
+
+  const onPressDelete = async () => {
+    await deleteList({uri: list.uri})
+
+    if (savedFeedConfig) {
+      await removeSavedFeed(savedFeedConfig)
+    }
+
+    Toast.show(l({message: 'List deleted', context: 'toast'}))
+    if (navigation.canGoBack()) {
+      navigation.goBack()
+    } else {
+      navigation.navigate('Home')
+    }
+  }
+
+  const onUnpinModList = async () => {
+    try {
+      if (!savedFeedConfig) return
+      await removeSavedFeed(savedFeedConfig)
+      Toast.show(l`Unpinned list`)
+    } catch {
+      Toast.show(l`Failed to unpin list`, {
+        type: 'error',
+      })
+    }
+  }
+
+  const onUnsubscribeMute = async () => {
+    try {
+      await muteList({uri: list.uri, mute: false})
+      Toast.show(l({message: 'List unmuted', context: 'toast'}))
+      ax.metric('moderation:unsubscribedFromList', {listType: 'mute'})
+    } catch {
+      Toast.show(
+        l`There was an issue. Please check your internet connection and try again.`,
+      )
+    }
+  }
+
+  const onUnsubscribeBlock = async () => {
+    try {
+      await blockList({uri: list.uri, block: false})
+      Toast.show(l({message: 'List unblocked', context: 'toast'}))
+      ax.metric('moderation:unsubscribedFromList', {listType: 'block'})
+    } catch {
+      Toast.show(
+        l`There was an issue. Please check your internet connection and try again.`,
+      )
+    }
+  }
+
+  return (
+    <>
+      <Menu.Root>
+        <Menu.Trigger label={l`More options`}>
+          {({props}) => (
+            <Button
+              label={props.accessibilityLabel}
+              testID="moreOptionsBtn"
+              size="small"
+              color="secondary"
+              shape="round"
+              {...props}>
+              <ButtonIcon icon={DotGridIcon} />
+            </Button>
+          )}
+        </Menu.Trigger>
+        <Menu.Outer showCancel>
+          <Menu.Group>
+            <Menu.Item
+              label={IS_WEB ? l`Copy link to list` : l`Share via...`}
+              onPress={onPressShare}>
+              <Menu.ItemText>
+                {IS_WEB ? (
+                  <Trans>Copy link to list</Trans>
+                ) : (
+                  <Trans>Share via...</Trans>
+                )}
+              </Menu.ItemText>
+              <Menu.ItemIcon
+                position="right"
+                icon={IS_WEB ? ChainLink : ShareIcon}
+              />
+            </Menu.Item>
+            {savedFeedConfig && (
+              <Menu.Item
+                label={l`Remove from my feeds`}
+                onPress={() => void onRemoveFromSavedFeeds()}>
+                <Menu.ItemText>
+                  <Trans>Remove from my feeds</Trans>
+                </Menu.ItemText>
+                <Menu.ItemIcon position="right" icon={TrashIcon} />
+              </Menu.Item>
+            )}
+          </Menu.Group>
+
+          <Menu.Divider />
+
+          {isOwner ? (
+            <Menu.Group>
+              <Menu.Item
+                label={l`Edit list details`}
+                onPress={editListDialogControl.open}>
+                <Menu.ItemText>
+                  <Trans>Edit list details</Trans>
+                </Menu.ItemText>
+                <Menu.ItemIcon position="right" icon={PencilLineIcon} />
+              </Menu.Item>
+              <Menu.Item
+                label={l`Delete list`}
+                onPress={deleteListPromptControl.open}>
+                <Menu.ItemText>
+                  <Trans>Delete list</Trans>
+                </Menu.ItemText>
+                <Menu.ItemIcon position="right" icon={TrashIcon} />
+              </Menu.Item>
+            </Menu.Group>
+          ) : (
+            <>
+              <Menu.Group>
+                <Menu.Item
+                  label={l`Report list`}
+                  onPress={reportDialogControl.open}>
+                  <Menu.ItemText>
+                    <Trans>Report list</Trans>
+                  </Menu.ItemText>
+                  <Menu.ItemIcon position="right" icon={WarningIcon} />
+                </Menu.Item>
+              </Menu.Group>
+              {isReferenceList ? (
+                <>
+                  <Menu.Divider />
+                  <Menu.Group>
+                    <Menu.Item
+                      label={
+                        referenceListOptOut
+                          ? l`Undo opt-out from Starter Pack`
+                          : l`Opt out of Starter Pack`
+                      }
+                      disabled={isOptOutPending}
+                      onPress={optOutDialogControl.open}>
+                      <Menu.ItemText>
+                        {referenceListOptOut ? (
+                          <Trans>Undo opt-out</Trans>
+                        ) : (
+                          <Trans>Opt out of Starter Pack</Trans>
+                        )}
+                      </Menu.ItemText>
+                    </Menu.Item>
+                  </Menu.Group>
+                </>
+              ) : null}
+            </>
+          )}
+
+          {isModList && isPinned && (
+            <>
+              <Menu.Divider />
+              <Menu.Group>
+                <Menu.Item
+                  label={l`Unpin moderation list`}
+                  onPress={() => void onUnpinModList()}>
+                  <Menu.ItemText>
+                    <Trans>Unpin moderation list</Trans>
+                  </Menu.ItemText>
+                  <Menu.ItemIcon icon={PinIcon} />
+                </Menu.Item>
+              </Menu.Group>
+            </>
+          )}
+
+          {isCurateList && (isBlocking || isMuting) && (
+            <>
+              <Menu.Divider />
+              <Menu.Group>
+                {isBlocking && (
+                  <Menu.Item
+                    label={l`Unblock list`}
+                    onPress={() => void onUnsubscribeBlock()}>
+                    <Menu.ItemText>
+                      <Trans>Unblock list</Trans>
+                    </Menu.ItemText>
+                    <Menu.ItemIcon icon={PersonCheckIcon} />
+                  </Menu.Item>
+                )}
+                {isMuting && (
+                  <Menu.Item
+                    label={l`Unmute list`}
+                    onPress={() => void onUnsubscribeMute()}>
+                    <Menu.ItemText>
+                      <Trans>Unmute list</Trans>
+                    </Menu.ItemText>
+                    <Menu.ItemIcon icon={UnmuteIcon} />
+                  </Menu.Item>
+                )}
+              </Menu.Group>
+            </>
+          )}
+        </Menu.Outer>
+      </Menu.Root>
+      <CreateOrEditListDialog control={editListDialogControl} list={list} />
+      <Prompt.Basic
+        control={deleteListPromptControl}
+        title={l`Delete this list?`}
+        description={l`If you delete this list, you won't be able to recover it.`}
+        onConfirm={() => void onPressDelete()}
+        confirmButtonCta={l`Delete`}
+        confirmButtonColor="negative"
+      />
+      {isReferenceList ? (
+        <Prompt.Outer control={optOutDialogControl}>
+          <Prompt.TitleText>
+            {referenceListOptOut ? (
+              <Trans>Undo opt-out?</Trans>
+            ) : (
+              <Trans>Opt out of this Starter Pack?</Trans>
+            )}
+          </Prompt.TitleText>
+          <Prompt.DescriptionText>
+            {referenceListOptOut ? (
+              <Trans>
+                You will be eligible to appear in this Starter Pack again.
+              </Trans>
+            ) : (
+              <Trans>
+                You will no longer appear in this Starter Pack. The creator will
+                be able to see that you've opted out and remove you if they
+                wish.
+              </Trans>
+            )}
+          </Prompt.DescriptionText>
+          <Prompt.Actions>
+            <Prompt.Action
+              cta={
+                referenceListOptOut
+                  ? l`Undo opt-out`
+                  : l`Opt out of Starter Pack`
+              }
+              color={referenceListOptOut ? 'primary' : 'negative'}
+              disabled={isOptOutPending}
+              onPress={() => {
+                setReferenceListOptOut({referenceListOptOut})
+              }}
+            />
+            <Prompt.Cancel />
+          </Prompt.Actions>
+        </Prompt.Outer>
+      ) : null}
+      <ReportDialog
+        control={reportDialogControl}
+        subject={{
+          ...list,
+          $type: 'app.bsky.graph.defs#listView',
+        }}
+      />
+    </>
+  )
+}

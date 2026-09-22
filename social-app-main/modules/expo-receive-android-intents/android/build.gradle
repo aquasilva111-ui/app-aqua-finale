@@ -1,0 +1,15 @@
+plugins {
+  id 'com.android.library'
+  id 'expo-module-gradle-plugin'
+}
+
+group = 'xyz.blueskyweb.app.exporeceiveandroidintents'
+version = '0.4.1'
+
+android {
+  namespace "xyz.blueskyweb.app.exporeceiveandroidintents"
+  defaultConfig {
+    versionCode 1
+    versionName "0.4.1"
+  }
+}

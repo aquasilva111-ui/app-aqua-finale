@@ -1,0 +1,91 @@
+import {View} from 'react-native'
+import {msg} from '@lingui/core/macro'
+import {useLingui} from '@lingui/react'
+import {Trans} from '@lingui/react/macro'
+
+import {useProfileQuery} from '#/state/queries/profile'
+import {useSession} from '#/state/session'
+import {useWizardState} from '#/screens/StarterPack/Wizard/State'
+import {atoms as a, useTheme} from '#/alf'
+import * as TextField from '#/components/forms/TextField'
+import {StarterPackMultiPathLarge as StarterPackIcon} from '#/components/icons/StarterPack'
+import {ScreenTransition} from '#/components/ScreenTransition'
+import {Text} from '#/components/Typography'
+
+export function StepDetails() {
+  const {_} = useLingui()
+  const t = useTheme()
+  const [state, dispatch] = useWizardState()
+
+  const {currentAccount} = useSession()
+  const {data: currentProfile} = useProfileQuery({
+    did: currentAccount?.did,
+    staleTime: Infinity,
+  })
+
+  const name = currentProfile?.displayName || currentProfile?.handle
+
+  return (
+    <ScreenTransition direction={state.transitionDirection} enabledWeb>
+      <View style={[a.px_xl, a.gap_xl, a.mt_4xl]}>
+        <View style={[a.gap_md, a.align_center, a.px_md, a.mb_md]}>
+          <StarterPackIcon width={90} gradient="sky" />
+          <Text style={[a.font_semi_bold, a.text_3xl]}>
+            <Trans>Invites, but personal</Trans>
+          </Text>
+          <Text style={[a.text_center, a.text_md, a.px_md]}>
+            <Trans>
+              Invite your friends to follow your favorite feeds and people
+            </Trans>
+          </Text>
+        </View>
+        <View>
+          <TextField.LabelText>
+            <Trans>What do you want to call your Starter Pack?</Trans>
+          </TextField.LabelText>
+          <TextField.Root>
+            <TextField.Input
+              label={
+                name ? _(msg`${name}’s Starter Pack`) : _(msg`My Starter Pack`)
+              }
+              value={state.name}
+              onChangeText={text => dispatch({type: 'SetName', name: text})}
+            />
+            <TextField.SuffixText
+              label={_(
+                msg({
+                  comment:
+                    'Accessibility label describing how many characters the user has entered out of a 50-character limit in a text input field',
+                  message: `${state.name?.length} out of 50`,
+                }),
+              )}>
+              <Text style={[t.atoms.text_contrast_medium]}>
+                {state.name?.length ?? 0}/50
+              </Text>
+            </TextField.SuffixText>
+          </TextField.Root>
+        </View>
+        <View>
+          <TextField.LabelText>
+            <Trans>Tell us a little more</Trans>
+          </TextField.LabelText>
+          <TextField.Root>
+            <TextField.Input
+              label={
+                name
+                  ? _(msg`${name}'s favorite feeds and people - join me!`)
+                  : _(msg`My favorite feeds and people - join me!`)
+              }
+              value={state.description}
+              onChangeText={text =>
+                dispatch({type: 'SetDescription', description: text})
+              }
+              multiline
+              style={{minHeight: 150}}
+            />
+          </TextField.Root>
+        </View>
+      </View>
+    </ScreenTransition>
+  )
+}

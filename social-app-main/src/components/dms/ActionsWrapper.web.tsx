@@ -1,0 +1,179 @@
+import {useCallback, useRef, useState} from 'react'
+import {Pressable, View} from 'react-native'
+import {type ModerationOpts} from '@bsky/sdk/moderation'
+import {plural} from '@lingui/core/macro'
+import {useLingui} from '@lingui/react/macro'
+
+import {EMOJI_REACTION_LIMIT} from '#/lib/constants'
+import {useMaybeProfileShadow} from '#/state/cache/profile-shadow'
+import {useConvoActive} from '#/state/messages/convo'
+import {useSession} from '#/state/session'
+import {atoms as a, useTheme} from '#/alf'
+import {MessageContextMenu} from '#/components/dms/MessageContextMenu'
+import {DotGrid3x1_Stroke2_Corner0_Rounded as DotsHorizontalIcon} from '#/components/icons/DotGrid'
+import {EmojiSmile_Stroke2_Corner0_Rounded as EmojiSmileIcon} from '#/components/icons/Emoji'
+import * as Toast from '#/components/Toast'
+import {type chat} from '#/lexicons'
+import type * as bsky from '#/types/bsky'
+import {EmojiReactionPicker} from './EmojiReactionPicker'
+import {
+  canReact,
+  hasReachedReactionLimit,
+  MESSAGE_BUBBLE_MAX_WIDTH,
+} from './util'
+
+export function ActionsWrapper({
+  message,
+  isFromSelf,
+  senderProfile,
+  moderationOpts,
+  children,
+}: {
+  message: chat.bsky.convo.defs.MessageView
+  isFromSelf: boolean
+  senderProfile?: bsky.profile.AnyProfileView
+  moderationOpts: ModerationOpts | undefined
+  children: React.ReactNode
+}) {
+  const viewRef = useRef(null)
+  const t = useTheme()
+  const {t: l} = useLingui()
+  const convo = useConvoActive()
+  const {currentAccount} = useSession()
+  const primaryMember = useMaybeProfileShadow(convo.convo.primaryMember)
+  const reactionsAvailable = canReact({
+    convoState: convo,
+    primaryMember,
+    moderationOpts,
+  })
+
+  const [showActions, setShowActions] = useState(false)
+
+  const onMouseEnter = useCallback(() => {
+    setShowActions(true)
+  }, [])
+
+  const onMouseLeave = useCallback(() => {
+    setShowActions(false)
+  }, [])
+
+  // We need to handle the `onFocus` separately because we want to know if there is a related target (the element
+  // that is losing focus). If there isn't that means the focus is coming from a dropdown that is now closed.
+  const onFocus = useCallback<React.FocusEventHandler>(e => {
+    if (e.nativeEvent.relatedTarget == null) return
+    setShowActions(true)
+  }, [])
+
+  const onEmojiSelect = useCallback(
+    (emoji: string) => {
+      if (
+        message.reactions?.find(
+          reaction =>
+            reaction.value === emoji &&
+            reaction.sender.did === currentAccount?.did,
+        )
+      ) {
+        convo
+          .removeReaction(message.id, emoji)
+          .catch(() => Toast.show(l`Failed to remove emoji reaction`))
+      } else {
+        if (hasReachedReactionLimit(message, currentAccount?.did)) {
+          Toast.show(
+            l`You cannot add more than ${plural(EMOJI_REACTION_LIMIT, {
+              one: '# emoji reaction',
+              other: '# emoji reactions',
+            })}`,
+            {
+              type: 'info',
+            },
+          )
+          return
+        }
+        convo.addReaction(message.id, emoji).catch(() =>
+          Toast.show(l`Failed to add emoji reaction`, {
+            type: 'error',
+          }),
+        )
+      }
+    },
+    [l, convo, message, currentAccount?.did],
+  )
+
+  return (
+    <View
+      onMouseEnter={onMouseEnter}
+      onMouseLeave={onMouseLeave}
+      // @ts-expect-error web only
+      onFocus={onFocus}
+      onBlur={onMouseLeave}
+      style={[a.flex_1, isFromSelf ? a.flex_row : a.flex_row_reverse]}
+      ref={viewRef}>
+      <View
+        style={[
+          a.justify_center,
+          a.flex_row,
+          a.align_center,
+          isFromSelf
+            ? [a.mr_xs, {marginLeft: 'auto'}, a.flex_row_reverse]
+            : [a.ml_xs, {marginRight: 'auto'}],
+        ]}>
+        {reactionsAvailable && (
+          <EmojiReactionPicker message={message} onEmojiSelect={onEmojiSelect}>
+            {({props, state, IS_NATIVE, control}) => {
+              // always false, file is platform split
+              if (IS_NATIVE) return null
+              const showMenuTrigger = showActions || control.isOpen ? 1 : 0
+              return (
+                <Pressable
+                  {...props}
+                  style={[
+                    {opacity: showMenuTrigger},
+                    a.p_xs,
+                    a.rounded_full,
+                    (state.hovered || state.pressed) && t.atoms.bg_contrast_25,
+                  ]}>
+                  <EmojiSmileIcon
+                    size="md"
+                    style={t.atoms.text_contrast_medium}
+                  />
+                </Pressable>
+              )
+            }}
+          </EmojiReactionPicker>
+        )}
+        <MessageContextMenu
+          message={message}
+          senderProfile={senderProfile}
+          moderationOpts={moderationOpts}>
+          {({props, state, IS_NATIVE, control}) => {
+            // always false, file is platform split
+            if (IS_NATIVE) return null
+            const showMenuTrigger = showActions || control.isOpen ? 1 : 0
+            return (
+              <Pressable
+                {...props}
+                style={[
+                  {opacity: showMenuTrigger},
+                  a.p_xs,
+                  a.rounded_full,
+                  (state.hovered || state.pressed) && t.atoms.bg_contrast_25,
+                ]}>
+                <DotsHorizontalIcon
+                  size="md"
+                  style={t.atoms.text_contrast_medium}
+                />
+              </Pressable>
+            )
+          }}
+        </MessageContextMenu>
+      </View>
+      <View
+        style={[
+          {maxWidth: MESSAGE_BUBBLE_MAX_WIDTH},
+          isFromSelf ? a.align_end : a.align_start,
+        ]}>
+        {children}
+      </View>
+    </View>
+  )
+}

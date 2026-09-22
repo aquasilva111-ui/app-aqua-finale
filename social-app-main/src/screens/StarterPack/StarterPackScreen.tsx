@@ -1,0 +1,891 @@
+import {useCallback, useEffect, useState} from 'react'
+import {View} from 'react-native'
+import {Image} from 'expo-image'
+import {AtUri} from '@atproto/syntax'
+import {type ModerationOpts} from '@bsky/sdk/moderation'
+import {RichText as RichTextAPI} from '@bsky/sdk/richtext'
+import {Plural, Trans, useLingui} from '@lingui/react/macro'
+import {useNavigation} from '@react-navigation/native'
+import {type NativeStackScreenProps} from '@react-navigation/native-stack'
+import {useQueryClient} from '@tanstack/react-query'
+
+import {batchedUpdates} from '#/lib/batchedUpdates'
+import {HITSLOP_20} from '#/lib/constants'
+import {isBlockedOrBlocking, isMuted} from '#/lib/moderation/blocked-and-muted'
+import {makeProfileLink, makeStarterPackLink} from '#/lib/routes/links'
+import {
+  type CommonNavigatorParams,
+  type NavigationProp,
+} from '#/lib/routes/types'
+import {cleanError} from '#/lib/strings/errors'
+import {getStarterPackOgCard} from '#/lib/strings/starter-pack'
+import {logger} from '#/logger'
+import {updateProfileShadow} from '#/state/cache/profile-shadow'
+import {useModerationOpts} from '#/state/preferences/moderation-opts'
+import {getAllListMembers} from '#/state/queries/list-members'
+import {useResolvedStarterPackShortLink} from '#/state/queries/resolve-short-link'
+import {useResolveDidQuery} from '#/state/queries/resolve-uri'
+import {useShortenLink} from '#/state/queries/shorten-link'
+import {
+  useDeleteStarterPackMutation,
+  useReferenceListOptOutMutation,
+  useStarterPackQuery,
+} from '#/state/queries/starter-packs'
+import {useAppviewClient, usePdsClient, useSession} from '#/state/session'
+import {useSetActiveStarterPack} from '#/state/shell/landing'
+import {useLoggedOutViewControls} from '#/state/shell/logged-out'
+import {
+  ProgressGuideAction,
+  useProgressGuideControls,
+} from '#/state/shell/progress-guide'
+import {PagerWithHeader} from '#/view/com/pager/PagerWithHeader'
+import {ProfileSubpageHeader} from '#/view/com/profile/ProfileSubpageHeader'
+import {type ListRef} from '#/view/com/util/List'
+import {bulkWriteFollows} from '#/screens/Onboarding/util'
+import {atoms as a, useBreakpoints, useTheme} from '#/alf'
+import {Button, ButtonIcon, ButtonText} from '#/components/Button'
+import {useDialogControl} from '#/components/Dialog'
+import {CreateListFromStarterPackDialog} from '#/components/dialogs/lists/CreateListFromStarterPackDialog'
+import {ArrowOutOfBoxModified_Stroke2_Corner2_Rounded as ArrowOutOfBoxIcon} from '#/components/icons/ArrowOutOfBox'
+import {ChainLink_Stroke2_Corner0_Rounded as ChainLinkIcon} from '#/components/icons/ChainLink'
+import {CircleInfo_Stroke2_Corner0_Rounded as CircleInfo} from '#/components/icons/CircleInfo'
+import {DotGrid3x1_Stroke2_Corner0_Rounded as Ellipsis} from '#/components/icons/DotGrid'
+import {ListSparkle_Stroke2_Corner0_Rounded as ListSparkle} from '#/components/icons/ListSparkle'
+import {Pencil_Stroke2_Corner0_Rounded as Pencil} from '#/components/icons/Pencil'
+import {Trash_Stroke2_Corner0_Rounded as Trash} from '#/components/icons/Trash'
+import {Trending3_Stroke2_Corner1_Rounded as TrendingIcon} from '#/components/icons/Trending'
+import * as Layout from '#/components/Layout'
+import {ListMaybePlaceholder} from '#/components/Lists'
+import {Loader} from '#/components/Loader'
+import * as Menu from '#/components/Menu'
+import {
+  ReportDialog,
+  useReportDialogControl,
+} from '#/components/moderation/ReportDialog'
+import * as Prompt from '#/components/Prompt'
+import {RichText} from '#/components/RichText'
+import {FeedsList} from '#/components/StarterPack/Main/FeedsList'
+import {PostsList} from '#/components/StarterPack/Main/PostsList'
+import {ProfilesList} from '#/components/StarterPack/Main/ProfilesList'
+import {QrCodeDialog} from '#/components/StarterPack/QrCodeDialog'
+import {ShareDialog} from '#/components/StarterPack/ShareDialog'
+import * as Toast from '#/components/Toast'
+import {Text} from '#/components/Typography'
+import {useAnalytics} from '#/analytics'
+import {IS_WEB} from '#/env'
+import {app} from '#/lexicons'
+import * as bsky from '#/types/bsky'
+
+type StarterPackScreeProps = NativeStackScreenProps<
+  CommonNavigatorParams,
+  'StarterPack'
+>
+type StarterPackScreenShortProps = NativeStackScreenProps<
+  CommonNavigatorParams,
+  'StarterPackShort'
+>
+
+export function StarterPackScreen({route}: StarterPackScreeProps) {
+  return (
+    <Layout.Screen>
+      <StarterPackScreenInner routeParams={route.params} />
+    </Layout.Screen>
+  )
+}
+
+export function StarterPackScreenShort({route}: StarterPackScreenShortProps) {
+  const {t: l} = useLingui()
+  const {
+    data: resolvedStarterPack,
+    isLoading,
+    isError,
+  } = useResolvedStarterPackShortLink({
+    code: route.params.code,
+  })
+
+  if (isLoading || isError || !resolvedStarterPack) {
+    return (
+      <Layout.Screen>
+        <ListMaybePlaceholder
+          isLoading={isLoading}
+          isError={isError}
+          errorMessage={l`That Starter Pack could not be found.`}
+          emptyMessage={l`That Starter Pack could not be found.`}
+        />
+      </Layout.Screen>
+    )
+  }
+  return (
+    <Layout.Screen>
+      <StarterPackScreenInner routeParams={resolvedStarterPack} />
+    </Layout.Screen>
+  )
+}
+
+export function StarterPackScreenInner({
+  routeParams,
+}: {
+  routeParams: StarterPackScreeProps['route']['params']
+}) {
+  const {name, rkey} = routeParams
+  const {t: l} = useLingui()
+  const {currentAccount} = useSession()
+
+  const moderationOpts = useModerationOpts()
+  const {
+    data: did,
+    isLoading: isLoadingDid,
+    isError: isErrorDid,
+  } = useResolveDidQuery(name)
+  const {
+    data: starterPack,
+    isLoading: isLoadingStarterPack,
+    isError: isErrorStarterPack,
+  } = useStarterPackQuery({did, rkey})
+
+  const isValid =
+    starterPack &&
+    (starterPack.list || starterPack?.creator?.did === currentAccount?.did) &&
+    bsky.starterPack.isTrustedView(starterPack) &&
+    bsky.matches(app.bsky.graph.starterpack, starterPack.record)
+
+  if (!did || !starterPack || !isValid || !moderationOpts) {
+    return (
+      <ListMaybePlaceholder
+        isLoading={isLoadingDid || isLoadingStarterPack || !moderationOpts}
+        isError={isErrorDid || isErrorStarterPack || !isValid}
+        errorMessage={l`That Starter Pack could not be found.`}
+        emptyMessage={l`That Starter Pack could not be found.`}
+      />
+    )
+  }
+
+  if (!starterPack.list && starterPack.creator.did === currentAccount?.did) {
+    return <InvalidStarterPack rkey={rkey} />
+  }
+
+  return (
+    <StarterPackScreenLoaded
+      starterPack={starterPack}
+      routeParams={routeParams}
+      moderationOpts={moderationOpts}
+    />
+  )
+}
+
+function StarterPackScreenLoaded({
+  starterPack,
+  routeParams,
+  moderationOpts,
+}: {
+  starterPack: app.bsky.graph.defs.StarterPackView
+  routeParams: StarterPackScreeProps['route']['params']
+  moderationOpts: ModerationOpts
+}) {
+  const showPeopleTab = Boolean(starterPack.list)
+  const showFeedsTab = Boolean(starterPack.feeds?.length)
+  const showPostsTab = Boolean(starterPack.list)
+  const {t: l} = useLingui()
+  const ax = useAnalytics()
+
+  const tabs = [
+    ...(showPeopleTab ? [l`People`] : []),
+    ...(showFeedsTab ? [l`Feeds`] : []),
+    ...(showPostsTab ? [l`Posts`] : []),
+  ]
+
+  const qrCodeDialogControl = useDialogControl()
+  const shareDialogControl = useDialogControl()
+
+  const shortenLink = useShortenLink()
+  const [link, setLink] = useState<string>()
+  const [imageLoaded, setImageLoaded] = useState(false)
+
+  useEffect(() => {
+    ax.metric('starterPack:opened', {
+      starterPack: starterPack.uri,
+    })
+  }, [ax, starterPack.uri])
+
+  const onOpenShareDialog = useCallback(() => {
+    const rkey = new AtUri(starterPack.uri).rkey
+    void shortenLink(makeStarterPackLink(starterPack.creator.did, rkey)).then(
+      res => {
+        setLink(res.url)
+      },
+    )
+    Image.prefetch(getStarterPackOgCard(starterPack))
+      .then(() => {
+        setImageLoaded(true)
+      })
+      .catch(() => {
+        setImageLoaded(true)
+      })
+    shareDialogControl.open()
+  }, [shareDialogControl, shortenLink, starterPack])
+
+  useEffect(() => {
+    if (routeParams.new) {
+      onOpenShareDialog()
+    }
+  }, [onOpenShareDialog, routeParams.new, shareDialogControl])
+
+  return (
+    <>
+      <PagerWithHeader
+        items={tabs}
+        isHeaderReady={true}
+        renderHeader={() => (
+          <Header
+            starterPack={starterPack}
+            routeParams={routeParams}
+            onOpenShareDialog={onOpenShareDialog}
+          />
+        )}>
+        {showPeopleTab
+          ? ({headerHeight, scrollElRef}) => (
+              <ProfilesList
+                // Validated above
+                listUri={starterPack.list!.uri}
+                headerHeight={headerHeight}
+                scrollElRef={scrollElRef as ListRef}
+                moderationOpts={moderationOpts}
+              />
+            )
+          : null}
+        {showFeedsTab
+          ? ({headerHeight, scrollElRef}) => (
+              <FeedsList
+                feeds={starterPack.feeds!}
+                headerHeight={headerHeight}
+                scrollElRef={scrollElRef as ListRef}
+              />
+            )
+          : null}
+        {showPostsTab
+          ? ({headerHeight, scrollElRef}) => (
+              <PostsList
+                // Validated above
+                listUri={starterPack.list!.uri}
+                headerHeight={headerHeight}
+                scrollElRef={scrollElRef as ListRef}
+              />
+            )
+          : null}
+      </PagerWithHeader>
+
+      <QrCodeDialog
+        control={qrCodeDialogControl}
+        starterPack={starterPack}
+        link={link}
+      />
+      <ShareDialog
+        control={shareDialogControl}
+        qrDialogControl={qrCodeDialogControl}
+        starterPack={starterPack}
+        link={link}
+        imageLoaded={imageLoaded}
+      />
+    </>
+  )
+}
+
+function Header({
+  starterPack,
+  routeParams,
+  onOpenShareDialog,
+}: {
+  starterPack: app.bsky.graph.defs.StarterPackView
+  routeParams: StarterPackScreeProps['route']['params']
+  onOpenShareDialog: () => void
+}) {
+  const {t: l} = useLingui()
+  const t = useTheme()
+  const {currentAccount, hasSession} = useSession()
+  const appviewClient = useAppviewClient()
+  const pdsClient = usePdsClient()
+  const queryClient = useQueryClient()
+  const setActiveStarterPack = useSetActiveStarterPack()
+  const {requestSwitchToAccount} = useLoggedOutViewControls()
+  const {captureAction} = useProgressGuideControls()
+
+  const [isProcessing, setIsProcessing] = useState(false)
+
+  const {record, creator} = starterPack
+  const isOwn = creator?.did === currentAccount?.did
+  const joinedAllTimeCount = starterPack.joinedAllTimeCount ?? 0
+  const ax = useAnalytics()
+
+  const navigation = useNavigation<NavigationProp>()
+
+  useEffect(() => {
+    const onFocus = () => {
+      if (hasSession) return
+      setActiveStarterPack({
+        uri: starterPack.uri,
+      })
+    }
+    const onBeforeRemove = () => {
+      if (hasSession) return
+      setActiveStarterPack(undefined)
+    }
+
+    navigation.addListener('focus', onFocus)
+    navigation.addListener('beforeRemove', onBeforeRemove)
+
+    return () => {
+      navigation.removeListener('focus', onFocus)
+      navigation.removeListener('beforeRemove', onBeforeRemove)
+    }
+  }, [hasSession, navigation, setActiveStarterPack, starterPack.uri])
+
+  const onFollowAll = async () => {
+    if (!starterPack.list) return
+
+    setIsProcessing(true)
+
+    let listItems: app.bsky.graph.defs.ListItemView[] = []
+    try {
+      listItems = await getAllListMembers(appviewClient, starterPack.list.uri)
+    } catch (e) {
+      setIsProcessing(false)
+      Toast.show(l`An error occurred while trying to follow all`, {
+        type: 'error',
+      })
+      logger.error('Failed to get list members for Starter Pack', {
+        safeMessage: e,
+      })
+      return
+    }
+
+    const dids = listItems
+      .filter(
+        li =>
+          li.subject.did !== currentAccount?.did &&
+          !isBlockedOrBlocking(li.subject) &&
+          !isMuted(li.subject) &&
+          !li.subject.viewer?.following,
+      )
+      .map(li => li.subject.did)
+
+    let followUris: Map<string, string>
+    try {
+      followUris = await bulkWriteFollows(pdsClient, appviewClient, dids, {
+        uri: starterPack.uri,
+        cid: starterPack.cid,
+      })
+    } catch (e) {
+      setIsProcessing(false)
+      Toast.show(l`An error occurred while trying to follow all`, {
+        type: 'error',
+      })
+      logger.error('Failed to follow all accounts', {safeMessage: e})
+    }
+
+    setIsProcessing(false)
+    batchedUpdates(() => {
+      for (let did of dids) {
+        updateProfileShadow(queryClient, did, {
+          followingUri: followUris.get(did),
+        })
+      }
+    })
+    Toast.show(l`All accounts have been followed!`)
+    captureAction(ProgressGuideAction.Follow, dids.length)
+    ax.metric('starterPack:followAll', {
+      logContext: 'StarterPackProfilesList',
+      starterPack: starterPack.uri,
+      count: dids.length,
+    })
+  }
+
+  if (!bsky.isType(app.bsky.graph.starterpack, record)) {
+    return null
+  }
+
+  const richText = record.description
+    ? new RichTextAPI({
+        text: record.description,
+        facets: record.descriptionFacets,
+      })
+    : undefined
+
+  return (
+    <>
+      <ProfileSubpageHeader
+        isLoading={false}
+        href={makeProfileLink(creator)}
+        title={record.name}
+        isOwner={isOwn}
+        avatar={undefined}
+        creator={creator}
+        purpose="app.bsky.graph.defs#referencelist"
+        avatarType="starter-pack">
+        {hasSession ? (
+          <View style={[a.flex_row, a.gap_sm, a.align_center]}>
+            {isOwn ? (
+              <Button
+                label={l`Share this Starter Pack`}
+                hitSlop={HITSLOP_20}
+                variant="solid"
+                color="primary"
+                size="small"
+                onPress={onOpenShareDialog}>
+                <ButtonText>
+                  <Trans>Share</Trans>
+                </ButtonText>
+              </Button>
+            ) : (
+              <Button
+                label={l`Follow all`}
+                variant="solid"
+                color="primary"
+                size="small"
+                disabled={isProcessing}
+                onPress={onFollowAll}
+                style={[a.flex_row, a.gap_xs, a.align_center]}>
+                <ButtonText>
+                  <Trans>Follow all</Trans>
+                </ButtonText>
+                {isProcessing && <ButtonIcon icon={Loader} />}
+              </Button>
+            )}
+            <OverflowMenu
+              routeParams={routeParams}
+              starterPack={starterPack}
+              onOpenShareDialog={onOpenShareDialog}
+            />
+          </View>
+        ) : null}
+      </ProfileSubpageHeader>
+      {!hasSession || richText || joinedAllTimeCount >= 25 ? (
+        <View style={[a.px_lg, a.pt_md, a.pb_sm, a.gap_md]}>
+          {richText ? <RichText value={richText} style={[a.text_md]} /> : null}
+          {!hasSession ? (
+            <Button
+              label={l`Join Bluesky`}
+              onPress={() => {
+                setActiveStarterPack({
+                  uri: starterPack.uri,
+                })
+                requestSwitchToAccount({requestedAccount: 'new'})
+              }}
+              color="primary"
+              size="large">
+              <ButtonText style={[a.text_lg]}>
+                <Trans>Join Bluesky</Trans>
+              </ButtonText>
+            </Button>
+          ) : null}
+          {joinedAllTimeCount >= 25 ? (
+            <View style={[a.flex_row, a.align_center, a.gap_xs]}>
+              <TrendingIcon
+                width={16}
+                style={{color: t.atoms.text_contrast_medium.color}}
+              />
+              <Text
+                style={[
+                  a.font_semi_bold,
+                  a.text_sm,
+                  t.atoms.text_contrast_medium,
+                ]}>
+                <Trans comment="Number of users (always at least 25) who have joined Bluesky using a specific Starter Pack">
+                  <Plural
+                    value={starterPack.joinedAllTimeCount || 0}
+                    other="# people have"
+                  />{' '}
+                  joined Bluesky via this Starter Pack!
+                </Trans>
+              </Text>
+            </View>
+          ) : null}
+        </View>
+      ) : null}
+    </>
+  )
+}
+
+function OverflowMenu({
+  starterPack,
+  routeParams,
+  onOpenShareDialog,
+}: {
+  starterPack: app.bsky.graph.defs.StarterPackView
+  routeParams: StarterPackScreeProps['route']['params']
+  onOpenShareDialog: () => void
+}) {
+  const t = useTheme()
+  const {t: l} = useLingui()
+  const ax = useAnalytics()
+  const {gtMobile} = useBreakpoints()
+  const {currentAccount} = useSession()
+  const reportDialogControl = useReportDialogControl()
+  const deleteDialogControl = useDialogControl()
+  const convertToListDialogControl = useDialogControl()
+  const optOutDialogControl = useDialogControl()
+  const navigation = useNavigation<NavigationProp>()
+
+  const {
+    mutate: deleteStarterPack,
+    isPending: isDeletePending,
+    error: deleteError,
+  } = useDeleteStarterPackMutation({
+    onSuccess: () => {
+      ax.metric('starterPack:delete', {})
+      deleteDialogControl.close(() => {
+        if (navigation.canGoBack()) {
+          navigation.popToTop()
+        } else {
+          navigation.navigate('Home')
+        }
+      })
+    },
+    onError: e => {
+      logger.error('Failed to delete Starter Pack', {safeMessage: e})
+    },
+  })
+
+  const isOwn = starterPack.creator.did === currentAccount?.did
+  const referenceListOptOut = starterPack.list?.viewer?.referenceListOptOut
+  const {mutate: setReferenceListOptOut, isPending: isOptOutPending} =
+    useReferenceListOptOutMutation({
+      starterPack,
+      onSuccess: action => {
+        ax.metric('starterPack:optOut', {
+          starterPack: starterPack.uri,
+          action,
+        })
+        Toast.show(
+          action === 'optOut'
+            ? l`Opted out of Starter Pack`
+            : l`Opt-out undone`,
+        )
+      },
+      onError: error => {
+        logger.error('Failed to update Starter Pack opt-out', {
+          safeMessage: error,
+        })
+        Toast.show(l`Failed to update Starter Pack opt-out`, {
+          type: 'error',
+        })
+      },
+    })
+
+  const onDeleteStarterPack = () => {
+    if (!starterPack.list) {
+      logger.error(`Unable to delete starterpack because list is missing`)
+      return
+    }
+
+    deleteStarterPack({
+      rkey: routeParams.rkey,
+      listUri: starterPack.list.uri,
+    })
+    ax.metric('starterPack:delete', {})
+  }
+
+  return (
+    <>
+      <Menu.Root>
+        <Menu.Trigger label={l`Repost or quote post`}>
+          {({props}) => (
+            <Button
+              {...props}
+              testID="headerDropdownBtn"
+              label={l`Open Starter Pack menu`}
+              hitSlop={HITSLOP_20}
+              variant="solid"
+              color="secondary"
+              size="small"
+              shape="round">
+              <ButtonIcon icon={Ellipsis} />
+            </Button>
+          )}
+        </Menu.Trigger>
+        <Menu.Outer style={{minWidth: 170}}>
+          {isOwn ? (
+            <>
+              <Menu.Item
+                label={l`Edit Starter Pack`}
+                testID="editStarterPackLinkBtn"
+                onPress={() => {
+                  navigation.navigate('StarterPackEdit', {
+                    rkey: routeParams.rkey,
+                  })
+                }}>
+                <Menu.ItemText>
+                  <Trans>Edit</Trans>
+                </Menu.ItemText>
+                <Menu.ItemIcon icon={Pencil} position="right" />
+              </Menu.Item>
+              <Menu.Item
+                label={l`Delete Starter Pack`}
+                testID="deleteStarterPackBtn"
+                onPress={() => {
+                  deleteDialogControl.open()
+                }}>
+                <Menu.ItemText>
+                  <Trans>Delete</Trans>
+                </Menu.ItemText>
+                <Menu.ItemIcon icon={Trash} position="right" />
+              </Menu.Item>
+              <Menu.Item
+                label={l`Create a list from this Starter Pack`}
+                testID="convertToListBtn"
+                onPress={() => {
+                  convertToListDialogControl.open()
+                }}>
+                <Menu.ItemText>
+                  <Trans>Create list from members</Trans>
+                </Menu.ItemText>
+                <Menu.ItemIcon icon={ListSparkle} position="right" />
+              </Menu.Item>
+            </>
+          ) : (
+            <>
+              <Menu.Group>
+                <Menu.Item
+                  label={
+                    IS_WEB ? l`Copy link to Starter Pack` : l`Share via...`
+                  }
+                  testID="shareStarterPackLinkBtn"
+                  onPress={onOpenShareDialog}>
+                  <Menu.ItemText>
+                    {IS_WEB ? (
+                      <Trans>Copy link</Trans>
+                    ) : (
+                      <Trans>Share via...</Trans>
+                    )}
+                  </Menu.ItemText>
+                  <Menu.ItemIcon
+                    icon={IS_WEB ? ChainLinkIcon : ArrowOutOfBoxIcon}
+                    position="right"
+                  />
+                </Menu.Item>
+              </Menu.Group>
+
+              <Menu.Item
+                label={l`Report Starter Pack`}
+                onPress={() => reportDialogControl.open()}>
+                <Menu.ItemText>
+                  <Trans>Report Starter Pack</Trans>
+                </Menu.ItemText>
+                <Menu.ItemIcon icon={CircleInfo} position="right" />
+              </Menu.Item>
+              {starterPack.list ? (
+                <Menu.Item
+                  label={
+                    referenceListOptOut
+                      ? l`Undo opt-out from Starter Pack`
+                      : l`Opt out of Starter Pack`
+                  }
+                  disabled={isOptOutPending}
+                  onPress={() => optOutDialogControl.open()}>
+                  <Menu.ItemText>
+                    {referenceListOptOut ? (
+                      <Trans>Undo opt-out</Trans>
+                    ) : (
+                      <Trans>Opt out of Starter Pack</Trans>
+                    )}
+                  </Menu.ItemText>
+                </Menu.Item>
+              ) : null}
+            </>
+          )}
+        </Menu.Outer>
+      </Menu.Root>
+      {starterPack.list && (
+        <ReportDialog
+          control={reportDialogControl}
+          subject={{
+            ...starterPack,
+            $type: 'app.bsky.graph.defs#starterPackView',
+          }}
+        />
+      )}
+      <Prompt.Outer control={deleteDialogControl}>
+        <Prompt.TitleText>
+          <Trans>Delete Starter Pack?</Trans>
+        </Prompt.TitleText>
+        <Prompt.DescriptionText>
+          <Trans>Are you sure you want to delete this Starter Pack?</Trans>
+        </Prompt.DescriptionText>
+        {deleteError && (
+          <View
+            style={[
+              a.flex_row,
+              a.gap_sm,
+              a.rounded_sm,
+              a.p_md,
+              a.mb_lg,
+              a.border,
+              t.atoms.border_contrast_medium,
+              t.atoms.bg_contrast_25,
+            ]}>
+            <View style={[a.flex_1, a.gap_2xs]}>
+              <Text style={[a.font_semi_bold]}>
+                <Trans>Unable to delete</Trans>
+              </Text>
+              <Text style={[a.leading_snug]}>{cleanError(deleteError)}</Text>
+            </View>
+            <CircleInfo size="sm" fill={t.palette.negative_400} />
+          </View>
+        )}
+        <Prompt.Actions>
+          <Button
+            variant="solid"
+            color="negative"
+            size={gtMobile ? 'small' : 'large'}
+            label={l`Yes, delete this Starter Pack`}
+            onPress={onDeleteStarterPack}>
+            <ButtonText>
+              <Trans>Delete</Trans>
+            </ButtonText>
+            {isDeletePending && <ButtonIcon icon={Loader} />}
+          </Button>
+          <Prompt.Cancel />
+        </Prompt.Actions>
+      </Prompt.Outer>
+      {starterPack.list ? (
+        <Prompt.Outer control={optOutDialogControl}>
+          <Prompt.TitleText>
+            {referenceListOptOut ? (
+              <Trans>Undo opt-out?</Trans>
+            ) : (
+              <Trans>Opt out of this Starter Pack?</Trans>
+            )}
+          </Prompt.TitleText>
+          <Prompt.DescriptionText>
+            {referenceListOptOut ? (
+              <Trans>
+                You will be eligible to appear in this Starter Pack again.
+              </Trans>
+            ) : (
+              <Trans>
+                You will no longer appear in this Starter Pack. The creator will
+                be able to see that you've opted out and remove you if they
+                wish.
+              </Trans>
+            )}
+          </Prompt.DescriptionText>
+          <Prompt.Actions>
+            <Button
+              variant="solid"
+              color={referenceListOptOut ? 'primary' : 'negative'}
+              size="large"
+              label={
+                referenceListOptOut
+                  ? l`Undo opt-out`
+                  : l`Opt out of Starter Pack`
+              }
+              disabled={isOptOutPending}
+              onPress={() => {
+                optOutDialogControl.close(() => {
+                  setReferenceListOptOut({referenceListOptOut})
+                })
+              }}>
+              <ButtonText>
+                {referenceListOptOut ? (
+                  <Trans>Undo opt-out</Trans>
+                ) : (
+                  <Trans>Opt out</Trans>
+                )}
+              </ButtonText>
+              {isOptOutPending && <ButtonIcon icon={Loader} />}
+            </Button>
+            <Prompt.Cancel />
+          </Prompt.Actions>
+        </Prompt.Outer>
+      ) : null}
+      <CreateListFromStarterPackDialog
+        control={convertToListDialogControl}
+        starterPack={starterPack}
+      />
+    </>
+  )
+}
+
+function InvalidStarterPack({rkey}: {rkey: string}) {
+  const {t: l} = useLingui()
+  const t = useTheme()
+  const navigation = useNavigation<NavigationProp>()
+  const {gtMobile} = useBreakpoints()
+  const [isProcessing, setIsProcessing] = useState(false)
+
+  const goBack = () => {
+    if (navigation.canGoBack()) {
+      navigation.goBack()
+    } else {
+      navigation.replace('Home')
+    }
+  }
+
+  const {mutate: deleteStarterPack} = useDeleteStarterPackMutation({
+    onSuccess: () => {
+      setIsProcessing(false)
+      goBack()
+    },
+    onError: e => {
+      setIsProcessing(false)
+      logger.error('Failed to delete invalid Starter Pack', {safeMessage: e})
+      Toast.show(l`Failed to delete Starter Pack`, {
+        type: 'error',
+      })
+    },
+  })
+
+  return (
+    <Layout.Content centerContent>
+      <View style={[a.py_4xl, a.px_xl, a.align_center, a.gap_5xl]}>
+        <View style={[a.w_full, a.align_center, a.gap_lg]}>
+          <Text style={[a.font_semi_bold, a.text_3xl]}>
+            <Trans>Starter Pack is invalid</Trans>
+          </Text>
+          <Text
+            style={[
+              a.text_md,
+              a.text_center,
+              t.atoms.text_contrast_high,
+              {lineHeight: 1.4},
+              gtMobile ? {width: 450} : [a.w_full, a.px_lg],
+            ]}>
+            <Trans>
+              The Starter Pack that you are trying to view is invalid. You may
+              delete this Starter Pack instead.
+            </Trans>
+          </Text>
+        </View>
+        <View style={[a.gap_md, gtMobile ? {width: 350} : [a.w_full, a.px_lg]]}>
+          <Button
+            variant="solid"
+            color="primary"
+            label={l`Delete Starter Pack`}
+            size="large"
+            style={[a.rounded_sm, a.overflow_hidden, {paddingVertical: 10}]}
+            disabled={isProcessing}
+            onPress={() => {
+              setIsProcessing(true)
+              deleteStarterPack({rkey})
+            }}>
+            <ButtonText>
+              <Trans>Delete</Trans>
+            </ButtonText>
+            {isProcessing && <Loader size="xs" color="white" />}
+          </Button>
+          <Button
+            variant="solid"
+            color="secondary"
+            label={l`Return to previous page`}
+            size="large"
+            style={[a.rounded_sm, a.overflow_hidden, {paddingVertical: 10}]}
+            disabled={isProcessing}
+            onPress={goBack}>
+            <ButtonText>
+              <Trans>Go Back</Trans>
+            </ButtonText>
+          </Button>
+        </View>
+      </View>
+    </Layout.Content>
+  )
+}

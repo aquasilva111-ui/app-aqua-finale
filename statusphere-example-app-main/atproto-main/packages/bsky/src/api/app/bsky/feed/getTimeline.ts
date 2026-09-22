@@ -1,0 +1,147 @@
+import { mapDefined } from '@atproto/common'
+import type { AtUriString } from '@atproto/syntax'
+import type { Server } from '@atproto/xrpc-server'
+import type { AppContext } from '../../../../context.js'
+import type { DataPlaneClient } from '../../../../data-plane/index.js'
+import type { FeedItem } from '../../../../hydration/feed.js'
+import type {
+  HydrateCtxWithViewer,
+  HydrationState,
+  Hydrator,
+} from '../../../../hydration/hydrator.js'
+import { parseString } from '../../../../hydration/util.js'
+import { app } from '../../../../lexicons/index.js'
+import { createPipeline } from '../../../../pipeline.js'
+import type { Views } from '../../../../views/index.js'
+import { clearlyBadCursor, fillPage, resHeaders } from '../../../util.js'
+
+export default function (server: Server, ctx: AppContext) {
+  const getTimeline = createPipeline(
+    skeleton,
+    hydration,
+    noBlocksOrMutes,
+    presentation,
+  )
+  server.add(app.bsky.feed.getTimeline, {
+    auth: ctx.authVerifier.standard,
+    opts: {
+      // @TODO remove after grace period has passed, behavior is non-standard.
+      // temporarily added for compat w/ previous version of xrpc-server to avoid breakage of a few specified parties.
+      paramsParseLoose: true,
+    },
+    handler: async ({ params, auth, req }) => {
+      const viewer = auth.credentials.iss
+      const labelers = ctx.reqLabelers(req)
+      const hydrateCtx = await ctx.hydrator.createContext({
+        labelers,
+        viewer,
+        features: ctx.featureGatesClient.scope(
+          ctx.featureGatesClient.parseUserContextFromHandler({ viewer, req }),
+        ),
+      })
+
+      const result = await fillPage({
+        cursor: params.cursor,
+        limit: params.limit,
+        fetch: ({ cursor, limit }) =>
+          getTimeline({ ...params, cursor, limit, hydrateCtx }, ctx),
+        items: (r) => r.feed,
+      })
+
+      const repoRev = await ctx.hydrator.actor.getRepoRevSafe(viewer)
+
+      return {
+        encoding: 'application/json',
+        body: result,
+        headers: resHeaders({ labelers: hydrateCtx.labelers, repoRev }),
+      }
+    },
+  })
+}
+
+export const skeleton = async (inputs: {
+  ctx: Context
+  params: Params
+}): Promise<Skeleton> => {
+  const { ctx, params } = inputs
+  if (clearlyBadCursor(params.cursor)) {
+    return { items: [] }
+  }
+  const res = await ctx.dataplane.getTimeline({
+    actorDid: params.hydrateCtx.viewer,
+    limit: params.limit,
+    cursor: params.cursor,
+  })
+  return {
+    items: res.items.map((item) => ({
+      post: { uri: item.uri as AtUriString, cid: item.cid || undefined },
+      repost: item.repost
+        ? { uri: item.repost as AtUriString, cid: item.repostCid || undefined }
+        : undefined,
+    })),
+    cursor: parseString(res.cursor),
+  }
+}
+
+const hydration = async (inputs: {
+  ctx: Context
+  params: Params
+  skeleton: Skeleton
+}): Promise<HydrationState> => {
+  const { ctx, params, skeleton } = inputs
+  return ctx.hydrator.hydrateFeedItems(skeleton.items, params.hydrateCtx, {
+    knownLikers:
+      !!params.hydrateCtx.viewer &&
+      params.hydrateCtx.features.checkGate(
+        params.hydrateCtx.features.Gate.KnownLikersFeedEnable,
+      ),
+  })
+}
+
+const noBlocksOrMutes = (inputs: {
+  ctx: Context
+  skeleton: Skeleton
+  hydration: HydrationState
+}): Skeleton => {
+  const { ctx, skeleton, hydration } = inputs
+  skeleton.items = skeleton.items.filter((item) => {
+    const bam = ctx.views.feedItemBlocksAndMutes(item, hydration)
+    return (
+      !bam.authorBlocked &&
+      !bam.authorMuted &&
+      !bam.authorQuotepostMuted &&
+      !bam.originatorBlocked &&
+      !bam.originatorMuted &&
+      !bam.originatorRepostMuted &&
+      !bam.ancestorAuthorBlocked
+    )
+  })
+  return skeleton
+}
+
+const presentation = (inputs: {
+  ctx: Context
+  skeleton: Skeleton
+  hydration: HydrationState
+}) => {
+  const { ctx, skeleton, hydration } = inputs
+  const feed = mapDefined(skeleton.items, (item) =>
+    ctx.views.feedViewPost(item, hydration),
+  )
+  return { feed, cursor: skeleton.cursor }
+}
+
+type Context = {
+  hydrator: Hydrator
+  views: Views
+  dataplane: DataPlaneClient
+}
+
+type Params = app.bsky.feed.getTimeline.$Params & {
+  hydrateCtx: HydrateCtxWithViewer
+}
+
+type Skeleton = {
+  items: FeedItem[]
+  cursor?: string
+}

@@ -1,0 +1,242 @@
+@import 'tailwindcss';
+@import 'tw-animate-css';
+@plugin '@tailwindcss/typography';
+
+/* Custom theming */
+
+@theme inline {
+  --space-screen: 100vh;
+}
+
+/* ---------------------------------------------------------------------------
+ * shadcn/ui design tokens (neutral base).
+ *
+ * Dark mode is driven by prefers-color-scheme rather than a .dark class, to
+ * match the behaviour this package has always had: system-driven, no toggle,
+ * no persisted preference.
+ *
+ * The brandable tokens (primary, destructive, ring, and the sidebar
+ * equivalents) are declared once, in the "Runtime branding" section below.
+ * ------------------------------------------------------------------------- */
+
+@custom-variant dark (@media (prefers-color-scheme: dark));
+
+/* ---------------------------------------------------------------------------
+ * Base UI orientation bridge.
+ *
+ * The shadcn primitives written for Base UI use `data-horizontal:` /
+ * `data-vertical:` variants, but Base UI emits a single
+ * `data-orientation="horizontal|vertical"` attribute. Tailwind's shorthand
+ * resolves `data-horizontal:` to `[data-horizontal]`, which never matches, so
+ * without these bridges every `Separator` renders at zero width/height — it is
+ * `h-px`/`w-px` that gives it its line. `Field` relies on the same variants.
+ *
+ * These belong in the style sheet rather than in the components: keeping them
+ * here lets `components/ui/*` stay byte-faithful to the upstream registry.
+ * ------------------------------------------------------------------------- */
+
+@custom-variant data-horizontal (&[data-orientation='horizontal']);
+@custom-variant data-vertical (&[data-orientation='vertical']);
+
+/* shadcn tokens: light */
+:root {
+  --radius: 0.625rem;
+
+  --background: oklch(1 0 0);
+  --foreground: oklch(0.145 0 0);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.145 0 0);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.145 0 0);
+  --secondary: oklch(0.97 0 0);
+  --secondary-foreground: oklch(0.205 0 0);
+  --muted: oklch(0.97 0 0);
+  --muted-foreground: oklch(0.556 0 0);
+  --accent: oklch(0.97 0 0);
+  --accent-foreground: oklch(0.205 0 0);
+  --border: oklch(0.922 0 0);
+  --input: oklch(0.922 0 0);
+
+  --sidebar: oklch(0.985 0 0);
+  --sidebar-foreground: oklch(0.145 0 0);
+  --sidebar-accent: oklch(0.97 0 0);
+  --sidebar-accent-foreground: oklch(0.205 0 0);
+  --sidebar-border: oklch(0.922 0 0);
+}
+
+@media (prefers-color-scheme: dark) {
+  /* shadcn tokens: dark */
+  :root {
+    --background: oklch(0.145 0 0);
+    --foreground: oklch(0.985 0 0);
+    --card: oklch(0.205 0 0);
+    --card-foreground: oklch(0.985 0 0);
+    --popover: oklch(0.205 0 0);
+    --popover-foreground: oklch(0.985 0 0);
+    --secondary: oklch(0.269 0 0);
+    --secondary-foreground: oklch(0.985 0 0);
+    --muted: oklch(0.269 0 0);
+    --muted-foreground: oklch(0.708 0 0);
+    --accent: oklch(0.269 0 0);
+    --accent-foreground: oklch(0.985 0 0);
+    --border: oklch(1 0 0 / 10%);
+    --input: oklch(1 0 0 / 15%);
+
+    --sidebar: oklch(0.205 0 0);
+    --sidebar-foreground: oklch(0.985 0 0);
+    --sidebar-accent: oklch(0.269 0 0);
+    --sidebar-accent-foreground: oklch(0.985 0 0);
+    --sidebar-border: oklch(1 0 0 / 10%);
+  }
+}
+
+/* ---------------------------------------------------------------------------
+ * Runtime branding.
+ *
+ * The oauth-provider injects `--branding-color-{name}` (space-separated RGB
+ * channels) and `--branding-color-{name}-contrast` into the page when the
+ * deployment configures branding colours — see the provider's
+ * build-customization-css.ts. When it does not, the variables are undefined
+ * and each token below resolves to its var() fallback — the pre-redesign
+ * stock palette, so an unbranded deployment keeps the look it always had.
+ *
+ * `warning` / `info` / `success` are single tokens, not the old multi-shade
+ * hue palettes: consumers tint surfaces and borders from them with opacity
+ * modifiers instead of per-shade variables.
+ * ------------------------------------------------------------------------- */
+
+/* runtime branding: light */
+:root {
+  /* fallbacks: the pre-redesign stock purple (#8338EC) / white / red-600 */
+  --primary: rgb(var(--branding-color-primary, 131 56 236));
+  --primary-foreground: rgb(
+    var(--branding-color-primary-contrast, 255 255 255)
+  );
+  --destructive: rgb(var(--branding-color-error, 220 38 38));
+  --ring: rgb(var(--branding-color-primary, 131 56 236));
+
+  /* fallbacks: the pre-redesign stock blue / amber / green */
+  --info: rgb(var(--branding-color-info, 0 122 255));
+  --warning: rgb(var(--branding-color-warning, 255 171 15));
+  --success: rgb(var(--branding-color-success, 23 204 136));
+
+  --sidebar-primary: var(--primary);
+  --sidebar-primary-foreground: var(--primary-foreground);
+  --sidebar-ring: var(--ring);
+}
+
+@media (prefers-color-scheme: dark) {
+  /* runtime branding: dark */
+  :root {
+    /* fallbacks: the same stock purple / white / red-400 */
+    --primary: rgb(var(--branding-color-primary, 131 56 236));
+    --primary-foreground: rgb(
+      var(--branding-color-primary-contrast, 255 255 255)
+    );
+    --destructive: rgb(var(--branding-color-error, 248 113 113));
+    --ring: rgb(var(--branding-color-primary, 131 56 236));
+
+    /* fallbacks: the same stock blue / amber / green */
+    --info: rgb(var(--branding-color-info, 0 122 255));
+    --warning: rgb(var(--branding-color-warning, 255 171 15));
+    --success: rgb(var(--branding-color-success, 23 204 136));
+  }
+}
+
+/* Auth screen background: the brandable image (--branding-background-*-image;
+ * see the provider's build-customization-css.ts) over the neutral muted base,
+ * per colour scheme. The card keeps its own opaque surface. */
+
+/* auth background: light */
+.auth-background {
+  background-color: var(--muted);
+  background-image: var(--branding-background-light-image, none);
+  background-position: center;
+  background-size: cover;
+  background-repeat: no-repeat;
+}
+
+@media (prefers-color-scheme: dark) {
+  /* auth background: dark */
+  .auth-background {
+    background-image: var(--branding-background-dark-image, none);
+  }
+}
+
+@theme inline {
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-info: var(--info);
+  --color-warning: var(--warning);
+  --color-success: var(--success);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+
+  /* @NOTE Tailwind v4's preflight resets buttons to the default arrow. The
+     shadcn registry restores the pointer from the stylesheet rather than in
+     each component — see its 2026-04 pointer-cursor changelog. */
+  button:not(:disabled),
+  [role='button']:not(:disabled) {
+    cursor: pointer;
+  }
+}
+
+/* ---------------------------------------------------------------------------
+ * Long-form copy.
+ *
+ * @NOTE The typography plugin's palettes (`prose-slate` and friends) are fixed
+ * Tailwind colour ramps, so they neither follow the theme tokens nor flip with
+ * the colour scheme. Binding its variables to the tokens keeps prose pages on
+ * the same greys as the rest of the UI, and makes `dark:prose-invert`
+ * unnecessary — the tokens already carry both schemes.
+ * ------------------------------------------------------------------------- */
+
+.prose-app {
+  --tw-prose-body: var(--foreground);
+  --tw-prose-headings: var(--foreground);
+  --tw-prose-links: var(--foreground);
+  --tw-prose-bold: var(--foreground);
+  --tw-prose-counters: var(--muted-foreground);
+  --tw-prose-bullets: var(--muted-foreground);
+  --tw-prose-hr: var(--border);
+  --tw-prose-quotes: var(--foreground);
+  --tw-prose-quote-borders: var(--border);
+  --tw-prose-captions: var(--muted-foreground);
+  --tw-prose-code: var(--foreground);
+  --tw-prose-th-borders: var(--border);
+  --tw-prose-td-borders: var(--border);
+}

@@ -1,0 +1,140 @@
+import { mapDefined } from '@atproto/common'
+import type { AtUriString } from '@atproto/lex'
+import { InvalidRequestError, type Server } from '@atproto/xrpc-server'
+import type { AppContext } from '../../../../context.js'
+import type { DataPlaneClient } from '../../../../data-plane/index.js'
+import type { FeedItem } from '../../../../hydration/feed.js'
+import type {
+  HydrateCtx,
+  HydrationState,
+  Hydrator,
+} from '../../../../hydration/hydrator.js'
+import { parseString } from '../../../../hydration/util.js'
+import { app } from '../../../../lexicons/index.js'
+import { createPipeline } from '../../../../pipeline.js'
+import { uriToDid as creatorFromUri } from '../../../../util/uris.js'
+import type { Views } from '../../../../views/index.js'
+import { clearlyBadCursor, fillPage, resHeaders } from '../../../util.js'
+
+export default function (server: Server, ctx: AppContext) {
+  const getActorLikes = createPipeline(
+    skeleton,
+    hydration,
+    noPostBlocks,
+    presentation,
+  )
+  server.add(app.bsky.feed.getActorLikes, {
+    auth: ctx.authVerifier.standardOptional,
+    handler: async ({ params, auth, req }) => {
+      const viewer = auth.credentials.iss
+      const labelers = ctx.reqLabelers(req)
+      const hydrateCtx = await ctx.hydrator.createContext({
+        labelers,
+        viewer,
+        features: ctx.featureGatesClient.scope(
+          ctx.featureGatesClient.parseUserContextFromHandler({ viewer, req }),
+        ),
+      })
+
+      const result = await fillPage({
+        cursor: params.cursor,
+        limit: params.limit,
+        fetch: ({ cursor, limit }) =>
+          getActorLikes({ ...params, cursor, limit, hydrateCtx }, ctx),
+        items: (r) => r.feed,
+      })
+
+      const repoRev = await ctx.hydrator.actor.getRepoRevSafe(viewer)
+
+      return {
+        encoding: 'application/json',
+        body: result,
+        headers: resHeaders({
+          repoRev,
+          labelers: hydrateCtx.labelers,
+        }),
+      }
+    },
+  })
+}
+
+const skeleton = async (inputs: {
+  ctx: Context
+  params: Params
+}): Promise<Skeleton> => {
+  const { ctx, params } = inputs
+  const { actor, limit, cursor } = params
+  const viewer = params.hydrateCtx.viewer
+  if (clearlyBadCursor(cursor)) {
+    return { items: [] }
+  }
+  const [actorDid] = await ctx.hydrator.actor.getDids([actor])
+  if (!actorDid || !viewer || viewer !== actorDid) {
+    throw new InvalidRequestError('Profile not found')
+  }
+
+  const likesRes = await ctx.dataplane.getActorLikes({
+    actorDid,
+    limit,
+    cursor,
+  })
+
+  const items = likesRes.likes.map((l) => ({
+    post: { uri: l.subject as AtUriString },
+  }))
+
+  return {
+    items,
+    cursor: parseString(likesRes.cursor),
+  }
+}
+
+const hydration = async (inputs: {
+  ctx: Context
+  params: Params
+  skeleton: Skeleton
+}) => {
+  const { ctx, params, skeleton } = inputs
+  return await ctx.hydrator.hydrateFeedItems(skeleton.items, params.hydrateCtx)
+}
+
+const noPostBlocks = (inputs: {
+  ctx: Context
+  skeleton: Skeleton
+  hydration: HydrationState
+}) => {
+  const { ctx, skeleton, hydration } = inputs
+  skeleton.items = skeleton.items.filter((item) => {
+    const creator = creatorFromUri(item.post.uri)
+    return !ctx.views.viewerBlockExists(creator, hydration)
+  })
+  return skeleton
+}
+
+const presentation = (inputs: {
+  ctx: Context
+  skeleton: Skeleton
+  hydration: HydrationState
+}) => {
+  const { ctx, skeleton, hydration } = inputs
+  const feed = mapDefined(skeleton.items, (item) =>
+    ctx.views.feedViewPost(item, hydration),
+  )
+  return {
+    feed,
+    cursor: skeleton.cursor,
+  }
+}
+
+type Context = {
+  hydrator: Hydrator
+  views: Views
+  dataplane: DataPlaneClient
+}
+
+type Params = app.bsky.feed.getActorLikes.$Params & { hydrateCtx: HydrateCtx }
+
+type Skeleton = {
+  items: FeedItem[]
+  cursor?: string
+}

@@ -1,0 +1,12 @@
+{
+  "version": 1,
+  "lexicons": [
+    "xyz.statusphere.status"
+  ],
+  "resolutions": {
+    "xyz.statusphere.status": {
+      "uri": "at://did:plc:cgglmcdlre7x4iknufqyajbo/com.atproto.lexicon.schema/xyz.statusphere.status",
+      "cid": "bafyreifmakho22qjptfycciab2gm6hyl4yeav7b2sp6us2ndotavqn4qgi"
+    }
+  }
+}

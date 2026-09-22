@@ -1,0 +1,167 @@
+import {msg} from '@lingui/core/macro'
+import {useLingui} from '@lingui/react'
+import {Trans} from '@lingui/react/macro'
+import {type NativeStackScreenProps} from '@react-navigation/native-stack'
+
+import {type CommonNavigatorParams} from '#/lib/routes/types'
+import {useNotificationDeclarationQuery} from '#/state/queries/activity-subscriptions'
+import {useAppPasswordsQuery} from '#/state/queries/app-passwords'
+import {useSession} from '#/state/session'
+import * as SettingsList from '#/screens/Settings/components/SettingsList'
+import {atoms as a, useTheme} from '#/alf'
+import * as Admonition from '#/components/Admonition'
+import {BellRinging_Stroke2_Corner0_Rounded as BellRingingIcon} from '#/components/icons/BellRinging'
+import {EyeSlash_Stroke2_Corner0_Rounded as EyeSlashIcon} from '#/components/icons/EyeSlash'
+import {Key_Stroke2_Corner2_Rounded as KeyIcon} from '#/components/icons/Key'
+import {MagnifyingGlass_Stroke2_Corner0_Rounded as MagnifyingGlassIcon} from '#/components/icons/MagnifyingGlass'
+import {ShieldCheck_Stroke2_Corner0_Rounded as ShieldIcon} from '#/components/icons/Shield'
+import * as Layout from '#/components/Layout'
+import {InlineLinkText} from '#/components/Link'
+import {type app} from '#/lexicons'
+import {AlgoVisibilityOptOut} from './components/AlgoVisibilityOptOut'
+import {Email2FAToggle} from './components/Email2FAToggle'
+import {PwiOptOut} from './components/PwiOptOut'
+import {ItemTextWithSubtitle} from './NotificationSettings/components/ItemTextWithSubtitle'
+
+type Props = NativeStackScreenProps<
+  CommonNavigatorParams,
+  'PrivacyAndSecuritySettings'
+>
+export function PrivacyAndSecuritySettingsScreen({}: Props) {
+  const {_} = useLingui()
+  const t = useTheme()
+  const {data: appPasswords} = useAppPasswordsQuery()
+  const {currentAccount} = useSession()
+  const {
+    data: notificationDeclaration,
+    isPending,
+    isError,
+  } = useNotificationDeclarationQuery()
+
+  return (
+    <Layout.Screen>
+      <Layout.Header.Outer>
+        <Layout.Header.BackButton />
+        <Layout.Header.Content>
+          <Layout.Header.TitleText>
+            <Trans>Privacy and Security</Trans>
+          </Layout.Header.TitleText>
+        </Layout.Header.Content>
+        <Layout.Header.Slot />
+      </Layout.Header.Outer>
+      <Layout.Content>
+        <SettingsList.Container>
+          <SettingsList.Item>
+            <SettingsList.ItemIcon
+              icon={ShieldIcon}
+              color={
+                currentAccount?.emailAuthFactor
+                  ? t.palette.primary_500
+                  : undefined
+              }
+            />
+            <SettingsList.ItemText>
+              {currentAccount?.emailAuthFactor ? (
+                <Trans>Email 2FA enabled</Trans>
+              ) : (
+                <Trans>Two-factor authentication (2FA)</Trans>
+              )}
+            </SettingsList.ItemText>
+            <Email2FAToggle />
+          </SettingsList.Item>
+          <SettingsList.LinkItem
+            to="/settings/app-passwords"
+            label={_(msg`App passwords`)}>
+            <SettingsList.ItemIcon icon={KeyIcon} />
+            <SettingsList.ItemText>
+              <Trans>App passwords</Trans>
+            </SettingsList.ItemText>
+            {appPasswords && appPasswords.length > 0 && (
+              <SettingsList.BadgeText>
+                {appPasswords.length}
+              </SettingsList.BadgeText>
+            )}
+          </SettingsList.LinkItem>
+          <SettingsList.LinkItem
+            label={_(
+              msg`Settings for allowing others to be notified of your posts`,
+            )}
+            to={{screen: 'ActivityPrivacySettings'}}
+            contentContainerStyle={[a.align_start]}>
+            <SettingsList.ItemIcon icon={BellRingingIcon} />
+            <ItemTextWithSubtitle
+              titleText={
+                <Trans>Allow others to be notified of your posts</Trans>
+              }
+              subtitleText={
+                <NotificationDeclaration
+                  data={notificationDeclaration}
+                  isError={isError}
+                />
+              }
+              showSkeleton={isPending}
+            />
+          </SettingsList.LinkItem>
+          <SettingsList.Divider />
+          <SettingsList.Item style={[a.align_start]}>
+            <SettingsList.ItemIcon icon={MagnifyingGlassIcon} />
+            <AlgoVisibilityOptOut />
+          </SettingsList.Item>
+          <SettingsList.Item style={[a.align_start]}>
+            <SettingsList.ItemIcon icon={EyeSlashIcon} />
+            <PwiOptOut />
+          </SettingsList.Item>
+          <SettingsList.Item>
+            <Admonition.Outer type="tip" style={[a.flex_1]}>
+              <Admonition.Row>
+                <Admonition.Icon />
+                <Admonition.Content>
+                  <Admonition.Text>
+                    <Trans>
+                      Note: Bluesky is part of the Atmosphere, an open public
+                      network. These settings ask other apps and websites to
+                      limit your visibility, but they can choose not to. Your
+                      public content may still appear elsewhere.
+                    </Trans>
+                  </Admonition.Text>
+                  <Admonition.Text>
+                    <InlineLinkText
+                      label={_(
+                        msg`Learn more about what is public on Bluesky.`,
+                      )}
+                      to="https://blueskyweb.zendesk.com/hc/en-us/articles/15835264007693-Data-Privacy">
+                      <Trans>Learn more about what is public on Bluesky.</Trans>
+                    </InlineLinkText>
+                  </Admonition.Text>
+                </Admonition.Content>
+              </Admonition.Row>
+            </Admonition.Outer>
+          </SettingsList.Item>
+        </SettingsList.Container>
+      </Layout.Content>
+    </Layout.Screen>
+  )
+}
+
+function NotificationDeclaration({
+  data,
+  isError,
+}: {
+  data?: {
+    value: app.bsky.notification.declaration.Main
+  }
+  isError?: boolean
+}) {
+  if (isError) {
+    return <Trans>Error loading preference</Trans>
+  }
+  switch (data?.value?.allowSubscriptions) {
+    case 'mutuals':
+      return <Trans>Only followers who I follow</Trans>
+    case 'none':
+      return <Trans context="enable for">No one</Trans>
+    case 'followers':
+    default:
+      return <Trans>Anyone who follows me</Trans>
+  }
+}

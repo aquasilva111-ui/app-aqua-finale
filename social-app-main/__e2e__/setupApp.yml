@@ -1,0 +1,9 @@
+appId: xyz.blueskyweb.app
+---
+- launchApp:
+    appId: "xyz.blueskyweb.app"
+    clearState: true
+- extendedWaitUntil:
+    visible: "Sign in"
+    timeout: 180000
+- waitForAnimationToEnd

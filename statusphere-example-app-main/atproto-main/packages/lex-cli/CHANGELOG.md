@@ -1,0 +1,444 @@
+# @atproto/lex-cli
+
+## 0.10.13
+
+### Patch Changes
+
+- Updated dependencies [[`fe4087e`](https://github.com/bluesky-social/atproto/commit/fe4087ecb7a7cc53c7081c9f97d49121e5251c36)]:
+  - @atproto/lexicon@0.7.14
+
+## 0.10.12
+
+### Patch Changes
+
+- Updated dependencies [[`ed0b7d3`](https://github.com/bluesky-social/atproto/commit/ed0b7d38811bb24952a3f1da988b02e39934d222)]:
+  - @atproto/syntax@0.7.6
+  - @atproto/lexicon@0.7.13
+
+## 0.10.11
+
+### Patch Changes
+
+- Updated dependencies [[`6af9f14`](https://github.com/bluesky-social/atproto/commit/6af9f141d18c1f41a04828af8256567d5f17a35e)]:
+  - @atproto/syntax@0.7.5
+  - @atproto/lexicon@0.7.12
+
+## 0.10.10
+
+### Patch Changes
+
+- [#5340](https://github.com/bluesky-social/atproto/pull/5340) [`8145a99`](https://github.com/bluesky-social/atproto/commit/8145a999e03219e846ae4773ec66f0de72939511) Thanks [@43081j](https://github.com/43081j)! - Remove typed-emitter and use built-in strongly typed `EventEmitter`
+
+- Updated dependencies [[`8b55a4a`](https://github.com/bluesky-social/atproto/commit/8b55a4ab69c24e5038f67c479b3b9953666ea0c2)]:
+  - @atproto/syntax@0.7.4
+  - @atproto/lexicon@0.7.11
+
+## 0.10.9
+
+### Patch Changes
+
+- Updated dependencies [[`6a3d607`](https://github.com/bluesky-social/atproto/commit/6a3d6073cb66c527b5b109242049c85c36b9658c)]:
+  - @atproto/syntax@0.7.3
+  - @atproto/lexicon@0.7.10
+
+## 0.10.8
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @atproto/lexicon@0.7.9
+
+## 0.10.7
+
+### Patch Changes
+
+- [#5205](https://github.com/bluesky-social/atproto/pull/5205) [`2de1da2`](https://github.com/bluesky-social/atproto/commit/2de1da2ff2ad00ab8b697b036a609b5b113e8787) Thanks [@arjxnt](https://github.com/arjxnt)! - Allow lex-cli input paths to include directories containing nested lexicon JSON files.
+
+- Updated dependencies [[`d3bbeb5`](https://github.com/bluesky-social/atproto/commit/d3bbeb5fe87f8c389c2f18abd2bc055ef916a63a)]:
+  - @atproto/lexicon@0.7.8
+
+## 0.10.6
+
+### Patch Changes
+
+- Updated dependencies [[`9e1da84`](https://github.com/bluesky-social/atproto/commit/9e1da84cc00a1cc5b453705539a2766403f3ee55)]:
+  - @atproto/syntax@0.7.2
+  - @atproto/lexicon@0.7.7
+
+## 0.10.5
+
+### Patch Changes
+
+- [#5197](https://github.com/bluesky-social/atproto/pull/5197) [`a0c49d9`](https://github.com/bluesky-social/atproto/commit/a0c49d9e8bc685c5a747a8d3b2775c73c63fdb6f) Thanks [@matthieusieben](https://github.com/matthieusieben)! - Rewrite import statements to be compatible with TypeScript's `verbatimModuleSyntax` config.
+
+- [#5197](https://github.com/bluesky-social/atproto/pull/5197) [`a0c49d9`](https://github.com/bluesky-social/atproto/commit/a0c49d9e8bc685c5a747a8d3b2775c73c63fdb6f) Thanks [@matthieusieben](https://github.com/matthieusieben)! - Make codegen output compatible with `verbatimModuleSyntax` TypeScript config
+
+- Updated dependencies [[`a0c49d9`](https://github.com/bluesky-social/atproto/commit/a0c49d9e8bc685c5a747a8d3b2775c73c63fdb6f)]:
+  - @atproto/lexicon@0.7.6
+  - @atproto/syntax@0.7.1
+
+## 0.10.4
+
+### Patch Changes
+
+- Updated dependencies [[`d1be0ce`](https://github.com/bluesky-social/atproto/commit/d1be0cead444ef95e64cac5ea5318edbec9d8112), [`d79f6d5`](https://github.com/bluesky-social/atproto/commit/d79f6d59a073c05cc37bd0d1482beeea482b67ed)]:
+  - @atproto/syntax@0.7.0
+  - @atproto/lexicon@0.7.5
+
+## 0.10.3
+
+### Patch Changes
+
+- [#5099](https://github.com/bluesky-social/atproto/pull/5099) [`b43ec31`](https://github.com/bluesky-social/atproto/commit/b43ec31f247f4461725b01226885f88bd430ca07) Thanks [@matthieusieben](https://github.com/matthieusieben)! - Update TypeScript build to rely on references to composite internal projects
+
+- [#5099](https://github.com/bluesky-social/atproto/pull/5099) [`b43ec31`](https://github.com/bluesky-social/atproto/commit/b43ec31f247f4461725b01226885f88bd430ca07) Thanks [@matthieusieben](https://github.com/matthieusieben)! - Build using `verbatimModuleSyntax`, reducing runtime import graph
+
+- [#5099](https://github.com/bluesky-social/atproto/pull/5099) [`b43ec31`](https://github.com/bluesky-social/atproto/commit/b43ec31f247f4461725b01226885f88bd430ca07) Thanks [@matthieusieben](https://github.com/matthieusieben)! - Bundle only necessary files in the NPM tarball, including the `CHANGELOG.md` and `README.md` files (if present).
+
+- [#5099](https://github.com/bluesky-social/atproto/pull/5099) [`b43ec31`](https://github.com/bluesky-social/atproto/commit/b43ec31f247f4461725b01226885f88bd430ca07) Thanks [@matthieusieben](https://github.com/matthieusieben)! - Build with `noImplicitAny` enabled
+
+- Updated dependencies [[`28a0b58`](https://github.com/bluesky-social/atproto/commit/28a0b588147863eaef948cd2bb8fc0f19d08cda9), [`b43ec31`](https://github.com/bluesky-social/atproto/commit/b43ec31f247f4461725b01226885f88bd430ca07), [`b43ec31`](https://github.com/bluesky-social/atproto/commit/b43ec31f247f4461725b01226885f88bd430ca07), [`b43ec31`](https://github.com/bluesky-social/atproto/commit/b43ec31f247f4461725b01226885f88bd430ca07), [`b43ec31`](https://github.com/bluesky-social/atproto/commit/b43ec31f247f4461725b01226885f88bd430ca07)]:
+  - @atproto/syntax@0.6.4
+  - @atproto/lexicon@0.7.4
+
+## 0.10.2
+
+### Patch Changes
+
+- [#5151](https://github.com/bluesky-social/atproto/pull/5151) [`a51c45d`](https://github.com/bluesky-social/atproto/commit/a51c45d38f6bd7b8765f640e564cf921d52162e7) Thanks [@matthieusieben](https://github.com/matthieusieben)! - Update dependencies
+
+- Updated dependencies [[`a51c45d`](https://github.com/bluesky-social/atproto/commit/a51c45d38f6bd7b8765f640e564cf921d52162e7)]:
+  - @atproto/lexicon@0.7.3
+  - @atproto/syntax@0.6.3
+
+## 0.10.1
+
+### Patch Changes
+
+- [#4967](https://github.com/bluesky-social/atproto/pull/4967) [`9fc720c`](https://github.com/bluesky-social/atproto/commit/9fc720ce75f3ee88a5e48a9be919b07c7647f6f5) Thanks [@matthieusieben](https://github.com/matthieusieben)! - Use TypeScript 7 to build package
+
+- Updated dependencies [[`9fc720c`](https://github.com/bluesky-social/atproto/commit/9fc720ce75f3ee88a5e48a9be919b07c7647f6f5)]:
+  - @atproto/lexicon@0.7.2
+  - @atproto/syntax@0.6.2
+
+## 0.10.0
+
+### Minor Changes
+
+- [#4929](https://github.com/bluesky-social/atproto/pull/4929) [`f01c59f`](https://github.com/bluesky-social/atproto/commit/f01c59f5bd3f75fb8b47a9eecd4858b84033fb7c) Thanks [@devinivy](https://github.com/devinivy)! - **BREAKING:** Drop support for Node.js 18 and 20. Node.js 22 is now the minimum supported version. Docker images now use Node.js 24.
+
+- [#4943](https://github.com/bluesky-social/atproto/pull/4943) [`c459153`](https://github.com/bluesky-social/atproto/commit/c459153395a30ce89e050892c8fab7dc98e019b9) Thanks [@devinivy](https://github.com/devinivy)! - **BREAKING:** Convert to pure ESM. All packages now ship `"type": "module"` with ES module output and Node16 module resolution.
+
+  Node.js 22's `require()` compatibility layer can still load these packages in CommonJS code.
+
+- [#4943](https://github.com/bluesky-social/atproto/pull/4943) [`c459153`](https://github.com/bluesky-social/atproto/commit/c459153395a30ce89e050892c8fab7dc98e019b9) Thanks [@devinivy](https://github.com/devinivy)! - **BREAKING:** Generated lexicon code now uses `.js` extensions on relative imports (e.g. `from '../lexicons.js'` instead of `from '../lexicons'`), enabling compatibility with Node16/NodeNext module resolution under ESM. Consumers using classic `node` or `bundler` resolution should be unaffected.
+
+- [#4930](https://github.com/bluesky-social/atproto/pull/4930) [`908bece`](https://github.com/bluesky-social/atproto/commit/908bece169258bff5ad121e5eec157d6ded6f705) Thanks [@devinivy](https://github.com/devinivy)! - Build with TypeScript 6.0.
+
+### Patch Changes
+
+- Updated dependencies [[`f01c59f`](https://github.com/bluesky-social/atproto/commit/f01c59f5bd3f75fb8b47a9eecd4858b84033fb7c), [`c459153`](https://github.com/bluesky-social/atproto/commit/c459153395a30ce89e050892c8fab7dc98e019b9), [`908bece`](https://github.com/bluesky-social/atproto/commit/908bece169258bff5ad121e5eec157d6ded6f705)]:
+  - @atproto/lexicon@0.7.0
+  - @atproto/syntax@0.6.0
+
+## 0.9.9
+
+### Patch Changes
+
+- Updated dependencies [[`f7c2610`](https://github.com/bluesky-social/atproto/commit/f7c26103a6d4e24e5bedbb6fd908be140420e0dd), [`f7c2610`](https://github.com/bluesky-social/atproto/commit/f7c26103a6d4e24e5bedbb6fd908be140420e0dd), [`f7c2610`](https://github.com/bluesky-social/atproto/commit/f7c26103a6d4e24e5bedbb6fd908be140420e0dd), [`f7c2610`](https://github.com/bluesky-social/atproto/commit/f7c26103a6d4e24e5bedbb6fd908be140420e0dd), [`f7c2610`](https://github.com/bluesky-social/atproto/commit/f7c26103a6d4e24e5bedbb6fd908be140420e0dd), [`52834ab`](https://github.com/bluesky-social/atproto/commit/52834aba182da8df3611fd9dff924e6c6a3973a7), [`f7c2610`](https://github.com/bluesky-social/atproto/commit/f7c26103a6d4e24e5bedbb6fd908be140420e0dd)]:
+  - @atproto/syntax@0.5.0
+  - @atproto/lexicon@0.6.2
+
+## 0.9.8
+
+### Patch Changes
+
+- Updated dependencies [[`d551b0e`](https://github.com/bluesky-social/atproto/commit/d551b0e3527714c111c3ec6e4c90ad7f46369fab)]:
+  - @atproto/lexicon@0.6.0
+
+## 0.9.7
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @atproto/lexicon@0.5.2
+
+## 0.9.6
+
+### Patch Changes
+
+- [#4294](https://github.com/bluesky-social/atproto/pull/4294) [`ac1d29ec0`](https://github.com/bluesky-social/atproto/commit/ac1d29ec0f105b4579491f563e2abd73f36c1df3) Thanks [@matthieusieben](https://github.com/matthieusieben)! - Export record types using the `Main` identifier
+
+## 0.9.5
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @atproto/lexicon@0.5.1
+
+## 0.9.4
+
+### Patch Changes
+
+- Updated dependencies [[`f9dc9aa4c`](https://github.com/bluesky-social/atproto/commit/f9dc9aa4c9eaf2f82d140fbf011a9015e7f1a00d), [`f9dc9aa4c`](https://github.com/bluesky-social/atproto/commit/f9dc9aa4c9eaf2f82d140fbf011a9015e7f1a00d), [`f9dc9aa4c`](https://github.com/bluesky-social/atproto/commit/f9dc9aa4c9eaf2f82d140fbf011a9015e7f1a00d)]:
+  - @atproto/lexicon@0.5.0
+  - @atproto/syntax@0.4.1
+
+## 0.9.3
+
+### Patch Changes
+
+- Updated dependencies [[`2104d9033`](https://github.com/bluesky-social/atproto/commit/2104d9033e2e1a3a7b821c1f0c5c8ffac5832d59)]:
+  - @atproto/lexicon@0.4.14
+
+## 0.9.2
+
+### Patch Changes
+
+- Updated dependencies [[`331a356ce`](https://github.com/bluesky-social/atproto/commit/331a356ce27ff1d0b24747b0c16f3b54b07a0a12)]:
+  - @atproto/lexicon@0.4.13
+
+## 0.9.1
+
+### Patch Changes
+
+- [`8d56743a1`](https://github.com/bluesky-social/atproto/commit/8d56743a18413a73e6bbca358336c770553d861f) Thanks [@devinivy](https://github.com/devinivy)! - Fix codegen for nsids containing dashes.
+
+## 0.9.0
+
+### Minor Changes
+
+- [#3999](https://github.com/bluesky-social/atproto/pull/3999) [`8ef976d38`](https://github.com/bluesky-social/atproto/commit/8ef976d3852df4bfa376e515e131cc0810a42f20) Thanks [@matthieusieben](https://github.com/matthieusieben)! - `QueryParams` is now always generated as a `type` instead of an `interface`
+
+### Patch Changes
+
+- Updated dependencies [[`8ef976d38`](https://github.com/bluesky-social/atproto/commit/8ef976d3852df4bfa376e515e131cc0810a42f20)]:
+  - @atproto/lexicon@0.4.12
+
+## 0.8.3
+
+### Patch Changes
+
+- [#3995](https://github.com/bluesky-social/atproto/pull/3995) [`e3e31b2b9`](https://github.com/bluesky-social/atproto/commit/e3e31b2b9bf8c4de6b2d7fa992c3b3795686ea72) Thanks [@mozzius](https://github.com/mozzius)! - Add put method to record utility classes
+
+## 0.8.2
+
+### Patch Changes
+
+- [#3906](https://github.com/bluesky-social/atproto/pull/3906) [`d880665e6`](https://github.com/bluesky-social/atproto/commit/d880665e63100e9e06b0ef2d287e5c3e0272e7ca) Thanks [@mozzius](https://github.com/mozzius)! - Fix type generation for arrays of strings with known values
+
+## 0.8.1
+
+### Patch Changes
+
+- Updated dependencies [[`cc485d296`](https://github.com/bluesky-social/atproto/commit/cc485d29638488928b5efec3d4b0627040589812)]:
+  - @atproto/lexicon@0.4.11
+
+## 0.8.0
+
+### Minor Changes
+
+- [#3715](https://github.com/bluesky-social/atproto/pull/3715) [`23462184d`](https://github.com/bluesky-social/atproto/commit/23462184dc941ba2fc3b4d054985a53715585020) Thanks [@knotbin](https://github.com/knotbin)! - Fix conflicts between lexicon in gen-api, record types in index file now named ComExampleNameRecord instead of NameRecord
+
+## 0.7.2
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @atproto/lexicon@0.4.10
+
+## 0.7.1
+
+### Patch Changes
+
+- Updated dependencies [[`670b6b5de`](https://github.com/bluesky-social/atproto/commit/670b6b5de2bf91e6944761c98eb1126fb6a681ee)]:
+  - @atproto/syntax@0.4.0
+  - @atproto/lexicon@0.4.9
+
+## 0.7.0
+
+### Minor Changes
+
+- [#3282](https://github.com/bluesky-social/atproto/pull/3282) [`c501715b0`](https://github.com/bluesky-social/atproto/commit/c501715b0dbe6daad962e1df80986521d00f65aa) Thanks [@tcyrus](https://github.com/tcyrus)! - Fix type-only imports in codegen
+
+## 0.6.2
+
+### Patch Changes
+
+- Updated dependencies [[`850e39843`](https://github.com/bluesky-social/atproto/commit/850e39843cb0ec9ea716675f7568c0c601f45e29)]:
+  - @atproto/syntax@0.3.4
+  - @atproto/lexicon@0.4.8
+
+## 0.6.1
+
+### Patch Changes
+
+- [#3534](https://github.com/bluesky-social/atproto/pull/3534) [`175f89f8f`](https://github.com/bluesky-social/atproto/commit/175f89f8fe0e570518e32b48e49f5bbf63395b67) Thanks [@matthieusieben](https://github.com/matthieusieben)! - Improve compatibility with Windows runtimes.
+
+## 0.6.0
+
+### Minor Changes
+
+- [#2999](https://github.com/bluesky-social/atproto/pull/2999) [`c53d943c8`](https://github.com/bluesky-social/atproto/commit/c53d943c8be5b8886254e020970a68c0f745b14c) Thanks [@matthieusieben](https://github.com/matthieusieben)! - Update the code generation to better reflect the data typings. In particular this change will cause generated code to explicit the `$type` property that can be present in the data.
+
+- [#2999](https://github.com/bluesky-social/atproto/pull/2999) [`c53d943c8`](https://github.com/bluesky-social/atproto/commit/c53d943c8be5b8886254e020970a68c0f745b14c) Thanks [@matthieusieben](https://github.com/matthieusieben)! - Remove `[string]: unknown` index signature from custom user objects, input and output schemas.
+
+### Patch Changes
+
+- [#2999](https://github.com/bluesky-social/atproto/pull/2999) [`c53d943c8`](https://github.com/bluesky-social/atproto/commit/c53d943c8be5b8886254e020970a68c0f745b14c) Thanks [@matthieusieben](https://github.com/matthieusieben)! - Add `.js` file extension to `import` statements in generated code.
+
+- [#2999](https://github.com/bluesky-social/atproto/pull/2999) [`c53d943c8`](https://github.com/bluesky-social/atproto/commit/c53d943c8be5b8886254e020970a68c0f745b14c) Thanks [@matthieusieben](https://github.com/matthieusieben)! - Type the generated `ids` object (that contains all the lexicon namespace ids) as `const`.
+
+- [#2999](https://github.com/bluesky-social/atproto/pull/2999) [`c53d943c8`](https://github.com/bluesky-social/atproto/commit/c53d943c8be5b8886254e020970a68c0f745b14c) Thanks [@matthieusieben](https://github.com/matthieusieben)! - Ensures that empty `schemas` arrays are typed as `LexiconDoc[]`.
+
+- Updated dependencies [[`c53d943c8`](https://github.com/bluesky-social/atproto/commit/c53d943c8be5b8886254e020970a68c0f745b14c), [`c53d943c8`](https://github.com/bluesky-social/atproto/commit/c53d943c8be5b8886254e020970a68c0f745b14c), [`c53d943c8`](https://github.com/bluesky-social/atproto/commit/c53d943c8be5b8886254e020970a68c0f745b14c)]:
+  - @atproto/syntax@0.3.3
+  - @atproto/lexicon@0.4.7
+
+## 0.5.7
+
+### Patch Changes
+
+- [#3220](https://github.com/bluesky-social/atproto/pull/3220) [`61dc0d60e`](https://github.com/bluesky-social/atproto/commit/61dc0d60e19b88c6427a54c6d95a391b5f4da7bd) Thanks [@matthieusieben](https://github.com/matthieusieben)! - Apply new linting rules regarding import order
+
+- [#3220](https://github.com/bluesky-social/atproto/pull/3220) [`61dc0d60e`](https://github.com/bluesky-social/atproto/commit/61dc0d60e19b88c6427a54c6d95a391b5f4da7bd) Thanks [@matthieusieben](https://github.com/matthieusieben)! - Update NodeJS engine requirement to >=18.7.0
+
+- Updated dependencies [[`61dc0d60e`](https://github.com/bluesky-social/atproto/commit/61dc0d60e19b88c6427a54c6d95a391b5f4da7bd)]:
+  - @atproto/lexicon@0.4.6
+  - @atproto/syntax@0.3.2
+
+## 0.5.6
+
+### Patch Changes
+
+- [#3420](https://github.com/bluesky-social/atproto/pull/3420) [`6241f6b00`](https://github.com/bluesky-social/atproto/commit/6241f6b00b8728cd5f5e879591b0ca98308edab0) Thanks [@rafaelbsky](https://github.com/rafaelbsky)! - Expose resetRouteRateLimits to the handler context
+
+## 0.5.5
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @atproto/lexicon@0.4.5
+
+## 0.5.4
+
+### Patch Changes
+
+- [#3274](https://github.com/bluesky-social/atproto/pull/3274) [`672243a9e`](https://github.com/bluesky-social/atproto/commit/672243a9ea0a2cbd0cfaa4e255c58de658ed22e2) Thanks [@dholms](https://github.com/dholms)! - Allow ratelimit calcKey to return null
+
+## 0.5.3
+
+### Patch Changes
+
+- Updated dependencies [[`9fd65ba0f`](https://github.com/bluesky-social/atproto/commit/9fd65ba0fa4caca59fd0e6156145e4c2618e3a95)]:
+  - @atproto/lexicon@0.4.4
+
+## 0.5.2
+
+### Patch Changes
+
+- [#2911](https://github.com/bluesky-social/atproto/pull/2911) [`bac9be2d3`](https://github.com/bluesky-social/atproto/commit/bac9be2d3ec904d1f984a871f43cf89aca17289d) Thanks [@matthieusieben](https://github.com/matthieusieben)! - Retain type of `schemas` using definition type instead of obscuring into a `LexiconDoc[]`
+
+- Updated dependencies [[`bac9be2d3`](https://github.com/bluesky-social/atproto/commit/bac9be2d3ec904d1f984a871f43cf89aca17289d), [`bac9be2d3`](https://github.com/bluesky-social/atproto/commit/bac9be2d3ec904d1f984a871f43cf89aca17289d)]:
+  - @atproto/syntax@0.3.1
+  - @atproto/lexicon@0.4.3
+
+## 0.5.1
+
+### Patch Changes
+
+- Updated dependencies [[`87a1f2426`](https://github.com/bluesky-social/atproto/commit/87a1f24262e0e644b6cf31cc7a0446d9127ffa94)]:
+  - @atproto/lexicon@0.4.2
+
+## 0.5.0
+
+### Minor Changes
+
+- [#2707](https://github.com/bluesky-social/atproto/pull/2707) [`2bdf75d7a`](https://github.com/bluesky-social/atproto/commit/2bdf75d7a63924c10e7a311f16cb447d595b933e) Thanks [@matthieusieben](https://github.com/matthieusieben)! - The generated client implementation uses the new `XrpcClient` class from `@atproto/xrpc`, instead of the deprecated `Client` and `ServiceClient` class.
+
+### Patch Changes
+
+- Updated dependencies [[`b934b396b`](https://github.com/bluesky-social/atproto/commit/b934b396b13ba32bf2bf7e75ecdf6871e5f310dd), [`2bdf75d7a`](https://github.com/bluesky-social/atproto/commit/2bdf75d7a63924c10e7a311f16cb447d595b933e)]:
+  - @atproto/lexicon@0.4.1
+
+## 0.4.1
+
+### Patch Changes
+
+- [#2691](https://github.com/bluesky-social/atproto/pull/2691) [`08ef309c9`](https://github.com/bluesky-social/atproto/commit/08ef309c9c1f35f0e7093cb845321e876133d23e) Thanks [@dholms](https://github.com/dholms)! - Fix use of prettier.format for codegen
+
+## 0.4.0
+
+### Minor Changes
+
+- [#2169](https://github.com/bluesky-social/atproto/pull/2169) [`f689bd51a`](https://github.com/bluesky-social/atproto/commit/f689bd51a2f4e02d4eca40eb2568a1fcb95494e9) Thanks [@matthieusieben](https://github.com/matthieusieben)! - Build system rework, stop bundling dependencies.
+
+### Patch Changes
+
+- Updated dependencies [[`f689bd51a`](https://github.com/bluesky-social/atproto/commit/f689bd51a2f4e02d4eca40eb2568a1fcb95494e9)]:
+  - @atproto/lexicon@0.4.0
+  - @atproto/syntax@0.3.0
+
+## 0.3.2
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @atproto/lexicon@0.3.3
+  - @atproto/syntax@0.2.1
+
+## 0.3.1
+
+### Patch Changes
+
+- Updated dependencies [[`0c815b964`](https://github.com/bluesky-social/atproto/commit/0c815b964c030aa0f277c40bf9786f130dc320f4)]:
+  - @atproto/syntax@0.2.0
+  - @atproto/lexicon@0.3.2
+
+## 0.3.0
+
+### Minor Changes
+
+- [#2039](https://github.com/bluesky-social/atproto/pull/2039) [`bf8d718c`](https://github.com/bluesky-social/atproto/commit/bf8d718cf918ac8d8a2cb1f57fde80535284642d) Thanks [@dholms](https://github.com/dholms)! - Namespace lexicon codegen
+
+## 0.2.5
+
+### Patch Changes
+
+- Updated dependencies [[`3c0ef382`](https://github.com/bluesky-social/atproto/commit/3c0ef382c12a413cc971ae47ffb341236c545f60)]:
+  - @atproto/syntax@0.1.5
+  - @atproto/lexicon@0.3.1
+
+## 0.2.4
+
+### Patch Changes
+
+- [#1788](https://github.com/bluesky-social/atproto/pull/1788) [`84e2d4d2`](https://github.com/bluesky-social/atproto/commit/84e2d4d2b6694f344d80c18672c78b650189d423) Thanks [@bnewbold](https://github.com/bnewbold)! - update license to "MIT or Apache2"
+
+- Updated dependencies [[`ce49743d`](https://github.com/bluesky-social/atproto/commit/ce49743d7f8800d33116b88001d7b512553c2c89), [`84e2d4d2`](https://github.com/bluesky-social/atproto/commit/84e2d4d2b6694f344d80c18672c78b650189d423)]:
+  - @atproto/lexicon@0.3.0
+  - @atproto/syntax@0.1.4
+
+## 0.2.3
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @atproto/lexicon@0.2.3
+  - @atproto/syntax@0.1.3
+
+## 0.2.2
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @atproto/lexicon@0.2.2
+  - @atproto/syntax@0.1.2
+
+## 0.2.1
+
+### Patch Changes
+
+- Updated dependencies [[`b1dc3555`](https://github.com/bluesky-social/atproto/commit/b1dc355504f9f2e047093dc56682b8034518cf80)]:
+  - @atproto/syntax@0.1.1
+  - @atproto/lexicon@0.2.1

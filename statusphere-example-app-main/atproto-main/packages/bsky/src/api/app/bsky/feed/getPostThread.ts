@@ -1,0 +1,156 @@
+import type { AtUriString } from '@atproto/syntax'
+import { InvalidRequestError, type Server } from '@atproto/xrpc-server'
+import type { ServerConfig } from '../../../../config.js'
+import type { AppContext } from '../../../../context.js'
+import {
+  Code,
+  type DataPlaneClient,
+  isDataplaneError,
+} from '../../../../data-plane/index.js'
+import type { HydrateCtx, Hydrator } from '../../../../hydration/hydrator.js'
+import { app } from '../../../../lexicons/index.js'
+import {
+  type HydrationFnInput,
+  type PresentationFnInput,
+  type SkeletonFnInput,
+  createPipeline,
+  noRules,
+} from '../../../../pipeline.js'
+import { postUriToThreadgateUri } from '../../../../util/uris.js'
+import type { Views } from '../../../../views/index.js'
+import { ATPROTO_REPO_REV, resHeaders } from '../../../util.js'
+
+export default function (server: Server, ctx: AppContext) {
+  const getPostThread = createPipeline(
+    skeleton,
+    hydration,
+    noRules, // handled in presentation: 3p block-violating replies are turned to #blockedPost, viewer blocks turned to #notFoundPost.
+    presentation,
+  )
+  server.add(app.bsky.feed.getPostThread, {
+    auth: ctx.authVerifier.optionalStandardOrRole,
+    opts: {
+      // @TODO remove after grace period has passed, behavior is non-standard.
+      // temporarily added for compat w/ previous version of xrpc-server to avoid breakage of a few specified parties.
+      paramsParseLoose: true,
+    },
+    handler: async ({ params, auth, req, res }) => {
+      const { viewer, includeTakedowns, include3pBlocks, skipViewerBlocks } =
+        ctx.authVerifier.parseCreds(auth)
+      const labelers = ctx.reqLabelers(req)
+      const hydrateCtx = await ctx.hydrator.createContext({
+        labelers,
+        viewer,
+        includeTakedowns,
+        include3pBlocks,
+        skipViewerBlocks,
+      })
+
+      let result: app.bsky.feed.getPostThread.$OutputBody
+      try {
+        result = await getPostThread({ ...params, hydrateCtx }, ctx)
+      } catch (err) {
+        const repoRev = await ctx.hydrator.actor.getRepoRevSafe(viewer)
+        if (repoRev) {
+          res.setHeader(ATPROTO_REPO_REV, repoRev)
+        }
+        throw err
+      }
+
+      const repoRev = await ctx.hydrator.actor.getRepoRevSafe(viewer)
+
+      return {
+        encoding: 'application/json',
+        body: result,
+        headers: resHeaders({
+          repoRev,
+          labelers: hydrateCtx.labelers,
+        }),
+      }
+    },
+  })
+}
+
+const skeleton = async (
+  inputs: SkeletonFnInput<Context, Params>,
+): Promise<Skeleton> => {
+  const { ctx, params } = inputs
+  const anchor = await ctx.hydrator.resolveUri(params.uri)
+  try {
+    const res = await ctx.dataplane.getThread({
+      postUri: anchor,
+      above: params.parentHeight,
+      below: getDepth(ctx, anchor, params),
+    })
+    return {
+      anchor,
+      uris: res.uris as AtUriString[],
+    }
+  } catch (err) {
+    if (isDataplaneError(err, Code.NotFound)) {
+      return {
+        anchor,
+        uris: [],
+      }
+    } else {
+      throw err
+    }
+  }
+}
+
+const hydration = async (
+  inputs: HydrationFnInput<Context, Params, Skeleton>,
+) => {
+  const { ctx, params, skeleton } = inputs
+  return ctx.hydrator.hydrateThreadPosts(
+    skeleton.uris.map((uri) => ({ uri })),
+    params.hydrateCtx,
+  )
+}
+
+const presentation = (
+  inputs: PresentationFnInput<Context, Params, Skeleton>,
+) => {
+  const { ctx, params, skeleton, hydration } = inputs
+  const thread = ctx.views.thread(skeleton, hydration, {
+    height: params.parentHeight!,
+    depth: getDepth(ctx, skeleton.anchor, params),
+  })
+  if (app.bsky.feed.defs.notFoundPost.$isTypeOf(thread)) {
+    // @TODO technically this could be returned as a NotFoundPost based on lexicon
+    throw new InvalidRequestError(
+      `Post not found: ${skeleton.anchor}`,
+      'NotFound',
+    )
+  }
+  const rootUri =
+    hydration.posts?.get(skeleton.anchor)?.record.reply?.root.uri ??
+    skeleton.anchor
+  const threadgate = ctx.views.threadgate(
+    postUriToThreadgateUri(rootUri),
+    hydration,
+  )
+  return { thread, threadgate }
+}
+
+type Context = {
+  dataplane: DataPlaneClient
+  hydrator: Hydrator
+  views: Views
+  cfg: ServerConfig
+}
+
+type Params = app.bsky.feed.getPostThread.$Params & { hydrateCtx: HydrateCtx }
+
+type Skeleton = {
+  anchor: AtUriString
+  uris: AtUriString[]
+}
+
+const getDepth = (ctx: Context, anchor: string, params: Params) => {
+  let maxDepth = ctx.cfg.maxThreadDepth
+  if (ctx.cfg.bigThreadUris.has(anchor) && ctx.cfg.bigThreadDepth) {
+    maxDepth = ctx.cfg.bigThreadDepth
+  }
+  return maxDepth ? Math.min(maxDepth, params.depth!) : params.depth!
+}

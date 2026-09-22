@@ -1,0 +1,92 @@
+import {createContext, useContext, useEffect, useState} from 'react'
+import {AppState} from 'react-native'
+
+import {MessagesEventBus} from '#/state/messages/events/agent'
+import {useChatClient, useSession} from '#/state/session'
+
+const MessagesEventBusContext = createContext<MessagesEventBus | null>(null)
+MessagesEventBusContext.displayName = 'MessagesEventBusContext'
+
+export function useMessagesEventBus() {
+  const ctx = useContext(MessagesEventBusContext)
+  if (!ctx) {
+    throw new Error(
+      'useMessagesEventBus must be used within a MessagesEventBusProvider',
+    )
+  }
+  return ctx
+}
+
+export function MessagesEventBusProvider({
+  children,
+}: {
+  children: React.ReactNode
+}) {
+  const {currentAccount} = useSession()
+
+  if (!currentAccount) {
+    return (
+      <MessagesEventBusContext.Provider value={null}>
+        {children}
+      </MessagesEventBusContext.Provider>
+    )
+  }
+
+  return (
+    <MessagesEventBusProviderInner>{children}</MessagesEventBusProviderInner>
+  )
+}
+
+export function MessagesEventBusProviderInner({
+  children,
+}: {
+  children: React.ReactNode
+}) {
+  const chatClient = useChatClient()
+  const [bus] = useState(
+    () =>
+      new MessagesEventBus({
+        chatClient,
+      }),
+  )
+
+  /*
+   * The bus outlives the client it was constructed with: replacing the session
+   * bundle (account switch, cross-tab token sync, expiry rescue) builds fresh
+   * clients over the new session and disposes the old ones, so a bus still
+   * holding the previous client would poll through a dead session.
+   */
+  useEffect(() => {
+    bus.updateClient(chatClient)
+  }, [bus, chatClient])
+
+  useEffect(() => {
+    bus.resume()
+
+    return () => {
+      bus.suspend()
+    }
+  }, [bus])
+
+  useEffect(() => {
+    const handleAppStateChange = (nextAppState: string) => {
+      if (nextAppState === 'active') {
+        bus.resume()
+      } else {
+        bus.background()
+      }
+    }
+
+    const sub = AppState.addEventListener('change', handleAppStateChange)
+
+    return () => {
+      sub.remove()
+    }
+  }, [bus])
+
+  return (
+    <MessagesEventBusContext.Provider value={bus}>
+      {children}
+    </MessagesEventBusContext.Provider>
+  )
+}

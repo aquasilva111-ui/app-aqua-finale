@@ -1,0 +1,82 @@
+import * as MediaLibrary from 'expo-media-library/legacy'
+import {msg} from '@lingui/core/macro'
+import {useLingui} from '@lingui/react'
+
+import {useCameraPermission} from '#/lib/hooks/usePermissions'
+import {openCamera} from '#/lib/media/picker'
+import {logger} from '#/logger'
+import {createComposerImage} from '#/state/gallery'
+import {atoms as a, useTheme} from '#/alf'
+import {Button} from '#/components/Button'
+import {Camera_Stroke2_Corner0_Rounded as Camera} from '#/components/icons/Camera'
+import {IS_NATIVE, IS_WEB_MOBILE} from '#/env'
+import {type OpenCameraBtnProps} from './OpenCameraBtn.shared'
+
+export function OpenCameraBtn({disabled, onAdd}: OpenCameraBtnProps) {
+  const {_} = useLingui()
+  const {requestCameraAccessIfNeeded} = useCameraPermission()
+  const [mediaPermissionRes, requestMediaPermission] =
+    MediaLibrary.usePermissions({granularPermissions: ['photo']})
+  const t = useTheme()
+
+  const mediaGranted = mediaPermissionRes?.granted
+  const mediaCanAskAgain = mediaPermissionRes?.canAskAgain
+
+  /*
+   * No useCallback: with the diagnostics above resolved this component compiles,
+   * so React Compiler memoizes it, and the hand-written deps were what it could
+   * not preserve.
+   */
+  const onPressTakePicture = async () => {
+    try {
+      if (!(await requestCameraAccessIfNeeded())) {
+        return
+      }
+      if (!mediaGranted) {
+        if (mediaCanAskAgain) {
+          await requestMediaPermission()
+        }
+      }
+
+      const img = await openCamera({
+        aspect: [1, 1],
+      })
+      if (!img) {
+        return
+      }
+
+      // If we don't have permissions it's fine, we just wont save it. The post itself will still have access to
+      // the image even without these permissions
+      if (mediaPermissionRes) {
+        await MediaLibrary.createAssetAsync(img.path)
+      }
+
+      const res = await createComposerImage(img)
+
+      onAdd([res])
+    } catch (err: any) {
+      // ignore
+      logger.warn('Error using camera', {error: err})
+    }
+  }
+
+  const shouldShowCameraButton = IS_NATIVE || IS_WEB_MOBILE
+  if (!shouldShowCameraButton) {
+    return null
+  }
+
+  return (
+    <Button
+      testID="openCameraButton"
+      onPress={onPressTakePicture}
+      label={_(msg`Camera`)}
+      accessibilityHint={_(msg`Opens camera on device`)}
+      style={a.p_sm}
+      variant="ghost"
+      shape="round"
+      color="primary"
+      disabled={disabled}>
+      <Camera size="lg" style={disabled && t.atoms.text_contrast_low} />
+    </Button>
+  )
+}

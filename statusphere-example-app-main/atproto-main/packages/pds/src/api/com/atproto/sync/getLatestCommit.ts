@@ -1,0 +1,33 @@
+import { InvalidRequestError, type Server } from '@atproto/xrpc-server'
+import { isUserOrAdmin } from '../../../../auth-verifier.js'
+import type { AppContext } from '../../../../context.js'
+import { com } from '../../../../lexicons/index.js'
+import { assertRepoAvailability } from './util.js'
+
+export default function (server: Server, ctx: AppContext) {
+  server.add(com.atproto.sync.getLatestCommit, {
+    auth: ctx.authVerifier.authorizationOrAdminTokenOptional({
+      authorize: () => {
+        // always allow
+      },
+    }),
+    handler: async ({ params, auth }) => {
+      const { did } = params
+      await assertRepoAvailability(ctx, did, isUserOrAdmin(auth, did))
+
+      const root = await ctx.actorStore.read(did, (store) =>
+        store.repo.storage.getRootDetailed(),
+      )
+      if (root === null) {
+        throw new InvalidRequestError(
+          `Could not find root for DID: ${did}`,
+          'RepoNotFound',
+        )
+      }
+      return {
+        encoding: 'application/json' as const,
+        body: { cid: root.cid.toString(), rev: root.rev },
+      }
+    },
+  })
+}

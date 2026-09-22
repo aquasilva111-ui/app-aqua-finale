@@ -1,0 +1,20 @@
+import type { GeneratedAlways } from 'kysely'
+import type { Method } from '../../proto/bsync_pb.js'
+
+export type OperationMethod = Method.CREATE | Method.UPDATE | Method.DELETE
+
+export interface Operation {
+  id: GeneratedAlways<number>
+  actorDid: string
+  namespace: string
+  key: string
+  method: OperationMethod
+  payload: Uint8Array<ArrayBuffer>
+  createdAt: GeneratedAlways<Date>
+}
+
+export const tableName = 'operation'
+
+export type PartialDB = { [tableName]: Operation }
+
+export const createOperationChannel = 'operation_create' // used with listen/notify

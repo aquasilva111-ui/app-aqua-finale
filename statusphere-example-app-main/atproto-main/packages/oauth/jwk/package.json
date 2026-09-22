@@ -1,0 +1,40 @@
+{
+  "name": "@atproto/jwk",
+  "version": "0.7.4",
+  "license": "MIT",
+  "description": "A library for working with JSON Web Keys (JWKs) in TypeScript. This is meant to be extended by environment-specific libraries like @atproto/jwk-jose.",
+  "keywords": [
+    "atproto",
+    "jwk",
+    "jwks",
+    "jwt",
+    "json web key"
+  ],
+  "homepage": "https://atproto.com",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/bluesky-social/atproto",
+    "directory": "packages/oauth/jwk"
+  },
+  "files": [
+    "./dist",
+    "./CHANGELOG.md"
+  ],
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "dependencies": {
+    "multiformats": "^13.0.0",
+    "zod": "^3.23.8"
+  },
+  "scripts": {
+    "build": "tsc --build tsconfig.build.json"
+  }
+}

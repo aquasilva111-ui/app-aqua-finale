@@ -1,0 +1,354 @@
+import events from 'node:events'
+import type http from 'node:http'
+import type { AddressInfo } from 'node:net'
+import compression from 'compression'
+import cors from 'cors'
+import { Etcd3 } from 'etcd3'
+import express from 'express'
+import { type HttpTerminator, createHttpTerminator } from 'http-terminator'
+import { DAY, SECOND } from '@atproto/common'
+import type { Keypair } from '@atproto/crypto'
+import { IdResolver } from '@atproto/identity'
+import { Client } from '@atproto/lex'
+import { createServer } from '@atproto/xrpc-server'
+import { createBlobDispatcher } from './api/blob-dispatcher.js'
+import API, {
+  blobResolver,
+  external,
+  health,
+  sitemap,
+  wellKnown,
+} from './api/index.js'
+import { AuthVerifier, createPublicKeyObject } from './auth-verifier.js'
+import { authWithApiKey as bsyncAuth, createBsyncClient } from './bsync.js'
+import type { ServerConfig } from './config.js'
+import { AppContext } from './context.js'
+import {
+  authWithApiKey as courierAuth,
+  createCourierClient,
+} from './courier.js'
+import {
+  BasicHostList,
+  EtcdHostList,
+  createDataPlaneClient,
+} from './data-plane/client/index.js'
+import * as error from './error.js'
+import { FeatureGatesClient } from './feature-gates/index.js'
+import { Hydrator } from './hydration/hydrator.js'
+import * as imageServer from './image/server.js'
+import { ImageUriBuilder } from './image/uri.js'
+import { createKwsClient } from './kws.js'
+import { loggerMiddleware } from './logger.js'
+import {
+  authWithApiKey as rolodexAuth,
+  createRolodexClient,
+} from './rolodex.js'
+import { createStashClient } from './stash.js'
+import {
+  type UndiciAgent,
+  createUndiciAgent,
+  dispatcherFetch,
+} from './undici.js'
+import { Views } from './views/index.js'
+import { VideoUriBuilder } from './views/util.js'
+
+export { ServerConfig } from './config.js'
+export type { ServerConfigValues } from './config.js'
+export { AppContext } from './context.js'
+export * from './data-plane/index.js'
+export { BackgroundQueue } from './data-plane/server/background.js'
+export { Database } from './data-plane/server/db/index.js'
+export { Redis } from './redis.js'
+
+export class BskyAppView {
+  public ctx: AppContext
+  public app: express.Application
+  public server?: http.Server
+  private terminator?: HttpTerminator
+  private dispatchers: UndiciAgent[]
+
+  constructor(opts: {
+    ctx: AppContext
+    app: express.Application
+    dispatchers?: UndiciAgent[]
+  }) {
+    this.ctx = opts.ctx
+    this.app = opts.app
+    this.dispatchers = opts.dispatchers ?? []
+  }
+
+  static create(opts: {
+    config: ServerConfig
+    signingKey: Keypair
+  }): BskyAppView {
+    const { config, signingKey } = opts
+    const app = express()
+    app.set('trust proxy', true)
+    app.use(cors({ maxAge: DAY / SECOND }))
+    app.use(loggerMiddleware)
+    app.use(compression())
+
+    // used solely for handle resolution: identity lookups occur on dataplane
+    const idResolver = new IdResolver({
+      plcUrl: config.didPlcUrl,
+      backupNameservers: config.handleResolveNameservers,
+      fetch: config.disableSsrfProtection ? globalThis.fetch : undefined,
+    })
+
+    const imgUriBuilderUrl =
+      config.cdnUrl ||
+      (config.publicUrl ? `${config.publicUrl}/img` : undefined)
+    if (!imgUriBuilderUrl) {
+      throw new Error('No image URI builder URL could be determined')
+    }
+    const imgUriBuilder = new ImageUriBuilder(imgUriBuilderUrl)
+    const videoUriBuilder = new VideoUriBuilder({
+      playlistUrlPattern:
+        config.videoPlaylistUrlPattern ||
+        `${config.publicUrl}/vid/%s/%s/playlist.m3u8`,
+      thumbnailUrlPattern:
+        config.videoThumbnailUrlPattern ||
+        `${config.publicUrl}/vid/%s/%s/thumbnail.jpg`,
+    })
+
+    const searchClient = config.searchUrl
+      ? new Client(
+          {
+            service: config.searchUrl,
+          },
+          {
+            // Trust internal services to send us well-formed responses
+            strictResponseProcessing: false,
+            validateResponse: config.debugMode,
+          },
+        )
+      : undefined
+
+    const suggestionsClient = config.suggestionsUrl
+      ? new Client(
+          {
+            service: config.suggestionsUrl,
+            headers: config.suggestionsApiKey
+              ? { authorization: `Bearer ${config.suggestionsApiKey}` }
+              : undefined,
+          },
+          {
+            // Trust internal services to send us well-formed responses
+            strictResponseProcessing: false,
+            validateResponse: config.debugMode,
+          },
+        )
+      : undefined
+
+    // @NOTE These bound the connection phase (TCP + TLS) only; once connected,
+    // the request is not bounded here. They are kept for the lifetime of the
+    // service (pooling connections), and closed on `destroy()`.
+    // An unused agent holds no socket, so they can be built unconditionally.
+    const topicsDispatcher = createUndiciAgent({ connectTimeout: SECOND })
+    const irisDispatcher = createUndiciAgent({ connectTimeout: SECOND })
+
+    const topicsClient = config.topicsUrl
+      ? new Client(
+          {
+            service: config.topicsUrl,
+            headers: config.topicsApiKey
+              ? { authorization: `Bearer ${config.topicsApiKey}` }
+              : undefined,
+            fetch: dispatcherFetch(topicsDispatcher),
+          },
+          {
+            // Trust internal services to send us well-formed responses
+            strictResponseProcessing: false,
+            validateResponse: config.debugMode,
+          },
+        )
+      : undefined
+
+    const irisClient = config.irisUrl
+      ? new Client(
+          {
+            service: config.irisUrl,
+            fetch: dispatcherFetch(irisDispatcher),
+          },
+          {
+            // Trust internal services to send us well-formed responses
+            strictResponseProcessing: false,
+            validateResponse: config.debugMode,
+          },
+        )
+      : undefined
+
+    const etcd = config.etcdHosts.length
+      ? new Etcd3({ hosts: config.etcdHosts })
+      : undefined
+
+    const dataplaneHostList =
+      etcd && config.dataplaneUrlsEtcdKeyPrefix
+        ? new EtcdHostList(
+            etcd,
+            config.dataplaneUrlsEtcdKeyPrefix,
+            config.dataplaneUrls,
+          )
+        : new BasicHostList(config.dataplaneUrls)
+
+    const featureGatesClient = new FeatureGatesClient({
+      growthBookApiHost: config.growthBookApiHost,
+      growthBookClientKey: config.growthBookClientKey,
+      eventProxyTrackingEndpoint: config.eventProxyTrackingEndpoint,
+    })
+
+    const dataplane = createDataPlaneClient(dataplaneHostList, {
+      httpVersion: config.dataplaneHttpVersion,
+      rejectUnauthorized: !config.dataplaneIgnoreBadTls,
+    })
+    const hydrator = new Hydrator(dataplane, config.labelsFromIssuerDids, {
+      debugFieldAllowedDids: config.debugFieldAllowedDids,
+      featureGatesClient,
+    })
+    const views = new Views({
+      imgUriBuilder: imgUriBuilder,
+      videoUriBuilder: videoUriBuilder,
+      indexedAtEpoch: config.indexedAtEpoch,
+      threadTagsBumpDown: [...config.threadTagsBumpDown],
+      threadTagsHide: [...config.threadTagsHide],
+      visibilityTagHide: config.visibilityTagHide,
+      visibilityTagRankPrefix: config.visibilityTagRankPrefix,
+    })
+
+    const bsyncClient = createBsyncClient({
+      baseUrl: config.bsyncUrl,
+      httpVersion: config.bsyncHttpVersion ?? '2',
+      nodeOptions: { rejectUnauthorized: !config.bsyncIgnoreBadTls },
+      interceptors: config.bsyncApiKey ? [bsyncAuth(config.bsyncApiKey)] : [],
+    })
+
+    const stashClient = createStashClient(bsyncClient)
+
+    const courierClient = config.courierUrl
+      ? createCourierClient({
+          baseUrl: config.courierUrl,
+          httpVersion: config.courierHttpVersion ?? '2',
+          nodeOptions: { rejectUnauthorized: !config.courierIgnoreBadTls },
+          interceptors: config.courierApiKey
+            ? [courierAuth(config.courierApiKey)]
+            : [],
+        })
+      : undefined
+
+    const rolodexClient = config.rolodexUrl
+      ? createRolodexClient({
+          baseUrl: config.rolodexUrl,
+          httpVersion: config.rolodexHttpVersion ?? '2',
+          nodeOptions: { rejectUnauthorized: !config.rolodexIgnoreBadTls },
+          interceptors: config.rolodexApiKey
+            ? [rolodexAuth(config.rolodexApiKey)]
+            : [],
+        })
+      : undefined
+
+    const kwsClient = config.kws ? createKwsClient(config.kws) : undefined
+
+    const entrywayJwtPublicKey = config.entrywayJwtPublicKeyHex
+      ? createPublicKeyObject(config.entrywayJwtPublicKeyHex)
+      : undefined
+    const authVerifier = new AuthVerifier(dataplane, {
+      ownDid: config.serverDid,
+      alternateAudienceDids: config.alternateAudienceDids,
+      modServiceDid: config.modServiceDid,
+      adminPasses: config.adminPasswords,
+      entrywayJwtPublicKey,
+    })
+
+    const blobDispatcher = createBlobDispatcher(config)
+
+    const ctx = new AppContext({
+      cfg: config,
+      etcd,
+      dataplane,
+      dataplaneHostList,
+      searchClient,
+      suggestionsClient,
+      topicsClient,
+      irisClient,
+      hydrator,
+      views,
+      signingKey,
+      idResolver,
+      bsyncClient,
+      stashClient,
+      courierClient,
+      rolodexClient,
+      authVerifier,
+      featureGatesClient,
+      blobDispatcher,
+      kwsClient,
+    })
+
+    const server = createServer([], {
+      validateResponse: config.debugMode,
+      payload: {
+        jsonLimit: 100 * 1024, // 100kb
+        textLimit: 100 * 1024, // 100kb
+        blobLimit: 5 * 1024 * 1024, // 5mb
+      },
+    })
+
+    API(server, ctx)
+
+    app.use(health.createRouter(ctx))
+    app.use(wellKnown.createRouter(ctx))
+    app.use(blobResolver.createMiddleware(ctx))
+    app.use(imageServer.createMiddleware(ctx, { prefix: '/img/' }))
+
+    if (config.dataplaneUrls.length > 0 || config.dataplaneUrlsEtcdKeyPrefix) {
+      app.use(sitemap.createRouter(ctx))
+    }
+
+    app.use(server.router)
+    app.use(error.handler)
+    app.use('/external', external.createRouter(ctx))
+
+    return new BskyAppView({
+      ctx,
+      app,
+      dispatchers: [topicsDispatcher, irisDispatcher],
+    })
+  }
+
+  async start(): Promise<http.Server> {
+    if (this.ctx.dataplaneHostList instanceof EtcdHostList) {
+      await this.ctx.dataplaneHostList.connect()
+    }
+    this.ctx.featureGatesClient.start() // lazy, no await
+    const server = this.app.listen(this.ctx.cfg.port)
+    this.server = server
+    server.keepAliveTimeout = 90000
+    this.terminator = createHttpTerminator({ server })
+    await events.once(server, 'listening')
+    const { port } = server.address() as AddressInfo
+    this.ctx.cfg.assignPort(port)
+    return server
+  }
+
+  async destroy(): Promise<void> {
+    try {
+      await this.ctx.featureGatesClient.destroy()
+    } finally {
+      try {
+        await this.terminator?.terminate()
+      } finally {
+        try {
+          await this.ctx.etcd?.close()
+        } finally {
+          await Promise.all(this.dispatchers.map((d) => d.close()))
+        }
+      }
+    }
+  }
+
+  async [Symbol.asyncDispose]() {
+    await this.destroy()
+  }
+}
+
+export default BskyAppView

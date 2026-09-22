@@ -1,0 +1,192 @@
+import {forwardRef, memo, useDeferredValue, useMemo} from 'react'
+import {type ListViewToken as ViewToken, RefreshControl} from 'react-native'
+import {
+  type FlatListPropsWithLayout,
+  useAnimatedScrollHandler,
+  useSharedValue,
+} from 'react-native-reanimated'
+import {scheduleOnRN} from 'react-native-worklets'
+import {updateActiveVideoViewAsync} from '@bsky.app/video'
+
+import {useDedupe} from '#/lib/hooks/useDedupe'
+import {useNonReactiveCallback} from '#/lib/hooks/useNonReactiveCallback'
+import {useScrollHandlers} from '#/lib/ScrollContext'
+import {addStyle} from '#/lib/styles'
+import {useTheme} from '#/alf'
+import {useLightbox} from '#/components/Lightbox/state'
+import {IS_IOS} from '#/env'
+import {FlatList_INTERNAL} from './Views'
+
+export type ListMethods = FlatList_INTERNAL
+// This is a generic type; we could update ~30 call sites but this approach is consistent with RN internals. -dsb
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export type ListProps<ItemT = any> = Omit<
+  FlatListPropsWithLayout<ItemT>,
+  | 'onMomentumScrollBegin' // Use ScrollContext instead.
+  | 'onMomentumScrollEnd' // Use ScrollContext instead.
+  | 'onScroll' // Use ScrollContext instead.
+  | 'onScrollBeginDrag' // Use ScrollContext instead.
+  | 'onScrollEndDrag' // Use ScrollContext instead.
+  | 'refreshControl' // Pass refreshing and/or onRefresh instead.
+  | 'contentOffset' // Pass headerOffset instead.
+  | 'progressViewOffset' // Can't be an animated value
+> & {
+  onScrolledDownChange?: (isScrolledDown: boolean) => void
+  headerOffset?: number
+  refreshing?: boolean
+  onRefresh?: () => void
+  onItemSeen?: (item: ItemT) => void
+  desktopFixedHeight?: number | boolean
+  // Web only prop to contain the scroll to the container rather than the window
+  disableFullWindowScroll?: boolean
+  sideBorders?: boolean
+  progressViewOffset?: number
+}
+export type ListRef = React.RefObject<FlatList_INTERNAL | null>
+
+const SCROLLED_DOWN_LIMIT = 200
+
+let List = forwardRef<ListMethods, ListProps>(
+  (
+    {
+      onScrolledDownChange,
+      refreshing,
+      onRefresh,
+      onItemSeen,
+      headerOffset,
+      style,
+      progressViewOffset,
+      automaticallyAdjustsScrollIndicatorInsets = false,
+      ...props
+    },
+    ref,
+  ): React.ReactElement => {
+    const isScrolledDown = useSharedValue(false)
+    const t = useTheme()
+    const dedupe = useDedupe(400)
+    const scrollsToTop = useAllowScrollToTop()
+
+    const handleScrolledDownChange = useNonReactiveCallback(
+      (didScrollDown: boolean) => {
+        onScrolledDownChange?.(didScrollDown)
+      },
+    )
+
+    // Intentionally destructured outside the main thread closure.
+    // See https://github.com/bluesky-social/social-app/pull/4108.
+    const {
+      onBeginDrag: onBeginDragFromContext,
+      onEndDrag: onEndDragFromContext,
+      onScroll: onScrollFromContext,
+      onMomentumEnd: onMomentumEndFromContext,
+    } = useScrollHandlers()
+    const scrollHandler = useAnimatedScrollHandler({
+      onBeginDrag(e, ctx) {
+        onBeginDragFromContext?.(e, ctx)
+      },
+      onEndDrag(e, ctx) {
+        scheduleOnRN(updateActiveVideoViewAsync)
+        onEndDragFromContext?.(e, ctx)
+      },
+      onScroll(e, ctx) {
+        onScrollFromContext?.(e, ctx)
+
+        const didScrollDown = e.contentOffset.y > SCROLLED_DOWN_LIMIT
+        if (isScrolledDown.get() !== didScrollDown) {
+          isScrolledDown.set(didScrollDown)
+          if (onScrolledDownChange != null) {
+            scheduleOnRN(handleScrolledDownChange, didScrollDown)
+          }
+        }
+
+        if (IS_IOS) {
+          scheduleOnRN(dedupe, updateActiveVideoViewAsync)
+        }
+      },
+      // Note: adding onMomentumBegin here makes simulator scroll
+      // lag on Android. So either don't add it, or figure out why.
+      onMomentumEnd(e, ctx) {
+        scheduleOnRN(updateActiveVideoViewAsync)
+        onMomentumEndFromContext?.(e, ctx)
+      },
+    })
+
+    const [onViewableItemsChanged, viewabilityConfig] = useMemo(() => {
+      if (!onItemSeen) {
+        return [undefined, undefined]
+      }
+      return [
+        (info: {
+          viewableItems: Array<ViewToken>
+          changed: Array<ViewToken>
+        }) => {
+          for (const item of info.changed) {
+            if (item.isViewable) {
+              onItemSeen(item.item)
+            }
+          }
+        },
+        {
+          itemVisiblePercentThreshold: 40,
+          minimumViewTime: 0.5e3,
+        },
+      ]
+    }, [onItemSeen])
+
+    let refreshControl
+    if (refreshing !== undefined || onRefresh !== undefined) {
+      refreshControl = (
+        <RefreshControl
+          key={t.atoms.text.color}
+          refreshing={refreshing ?? false}
+          onRefresh={onRefresh}
+          tintColor={t.atoms.text.color}
+          titleColor={t.atoms.text.color}
+          progressViewOffset={progressViewOffset ?? headerOffset}
+        />
+      )
+    }
+
+    if (headerOffset != null) {
+      style = addStyle(style, {
+        paddingTop: headerOffset,
+      })
+    }
+
+    return (
+      <FlatList_INTERNAL
+        showsVerticalScrollIndicator // overridable
+        onViewableItemsChanged={onViewableItemsChanged}
+        viewabilityConfig={viewabilityConfig}
+        {...props}
+        automaticallyAdjustsScrollIndicatorInsets={
+          automaticallyAdjustsScrollIndicatorInsets
+        }
+        scrollIndicatorInsets={{
+          top: headerOffset,
+          right: 1,
+          ...props.scrollIndicatorInsets,
+        }}
+        indicatorStyle={t.scheme === 'dark' ? 'white' : 'black'}
+        refreshControl={refreshControl}
+        onScroll={scrollHandler}
+        scrollsToTop={scrollsToTop}
+        scrollEventThrottle={1}
+        style={style}
+        ref={ref}
+      />
+    )
+  },
+)
+List.displayName = 'List'
+
+List = memo(List)
+export {List}
+
+// We only want to use this context value on iOS because the `scrollsToTop` prop is iOS-only
+// removing it saves us a re-render on Android
+const useAllowScrollToTop = IS_IOS ? useAllowScrollToTopIOS : () => undefined
+function useAllowScrollToTopIOS() {
+  const {activeLightbox} = useLightbox()
+  return useDeferredValue(!activeLightbox)
+}

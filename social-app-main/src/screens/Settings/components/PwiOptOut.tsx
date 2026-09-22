@@ -1,0 +1,110 @@
+import {useCallback} from 'react'
+import {View} from 'react-native'
+import {type $Typed} from '@atproto/lex'
+import {msg} from '@lingui/core/macro'
+import {useLingui} from '@lingui/react'
+import {Trans} from '@lingui/react/macro'
+
+import {
+  useProfileQuery,
+  useProfileUpdateMutation,
+} from '#/state/queries/profile'
+import {useSession} from '#/state/session'
+import {atoms as a, useTheme} from '#/alf'
+import * as Toggle from '#/components/forms/Toggle'
+import {Text} from '#/components/Typography'
+import {com} from '#/lexicons'
+import * as bsky from '#/types/bsky'
+
+export function PwiOptOut() {
+  const t = useTheme()
+  const {_} = useLingui()
+  const {currentAccount} = useSession()
+  const {data: profile} = useProfileQuery({did: currentAccount?.did})
+  const updateProfile = useProfileUpdateMutation()
+
+  const isOptedOut =
+    profile?.labels?.some(l => l.val === '!no-unauthenticated') || false
+  const canToggle = profile && !updateProfile.isPending
+
+  const onToggleOptOut = useCallback(() => {
+    if (!profile) {
+      return
+    }
+    let wasAdded = false
+    updateProfile.mutate({
+      profile,
+      updates: existing => {
+        // create labels attr if needed
+        const labels: $Typed<com.atproto.label.defs.SelfLabels> = bsky.matches(
+          com.atproto.label.defs.selfLabels,
+          existing.labels,
+        )
+          ? existing.labels
+          : {
+              $type: 'com.atproto.label.defs#selfLabels',
+              values: [],
+            }
+
+        // toggle the label
+        const hasLabel = labels.values.some(
+          l => l.val === '!no-unauthenticated',
+        )
+        if (hasLabel) {
+          wasAdded = false
+          labels.values = labels.values.filter(
+            l => l.val !== '!no-unauthenticated',
+          )
+        } else {
+          wasAdded = true
+          labels.values.push({val: '!no-unauthenticated'})
+        }
+
+        // delete if no longer needed
+        if (labels.values.length === 0) {
+          delete existing.labels
+        } else {
+          existing.labels = labels
+        }
+
+        return existing
+      },
+      checkCommitted: profile => {
+        if (!profile) return false
+        const exists = !!profile.labels?.some(
+          l => l.val === '!no-unauthenticated',
+        )
+        return exists === wasAdded
+      },
+    })
+  }, [updateProfile, profile])
+
+  return (
+    <View style={[a.flex_1, a.gap_sm]}>
+      <Toggle.Item
+        name="logged_out_visibility"
+        disabled={!canToggle || updateProfile.isPending}
+        value={isOptedOut}
+        onChange={onToggleOptOut}
+        label={_(
+          msg`Ask apps and sites not to show my account to logged-out users`,
+        )}
+        style={[a.w_full]}>
+        <Toggle.LabelText style={[a.flex_1]}>
+          <Trans>
+            Ask apps and sites not to show my account to logged-out users
+          </Trans>
+        </Toggle.LabelText>
+        <Toggle.Platform />
+      </Toggle.Item>
+
+      <Text style={[a.leading_snug, t.atoms.text_contrast_high]}>
+        <Trans>
+          Bluesky will not show your account to logged-out users and will ask
+          other apps to do the same. Other apps may not honor this request. It
+          doesn't make your account private.
+        </Trans>
+      </Text>
+    </View>
+  )
+}

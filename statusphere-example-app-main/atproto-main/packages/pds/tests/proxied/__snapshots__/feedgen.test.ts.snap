@@ -1,0 +1,221 @@
+// Jest Snapshot v1, https://jestjs.io/docs/snapshot-testing
+
+exports[`feedgen proxy view performs basic proxy of getFeed 1`] = `
+{
+  "feed": [
+    {
+      "post": {
+        "author": {
+          "associated": {
+            "activitySubscription": {
+              "allowSubscriptions": "followers",
+            },
+          },
+          "avatar": "https://bsky.public.url/img/avatar/plain/user(1)/cids(1)",
+          "createdAt": "1970-01-01T00:00:00.000Z",
+          "did": "user(0)",
+          "displayName": "ali",
+          "handle": "alice.test",
+          "labels": [
+            {
+              "cid": "cids(2)",
+              "cts": "1970-01-01T00:00:00.000Z",
+              "src": "user(0)",
+              "uri": "record(1)",
+              "val": "self-label-a",
+            },
+            {
+              "cid": "cids(2)",
+              "cts": "1970-01-01T00:00:00.000Z",
+              "src": "user(0)",
+              "uri": "record(1)",
+              "val": "self-label-b",
+            },
+          ],
+          "viewer": {
+            "blockedBy": false,
+            "muted": false,
+            "mutedOnlyQuoteposts": false,
+            "mutedOnlyReposts": false,
+          },
+        },
+        "bookmarkCount": 0,
+        "cid": "cids(0)",
+        "indexedAt": "1970-01-01T00:00:00.000Z",
+        "labels": [
+          {
+            "cid": "cids(0)",
+            "cts": "1970-01-01T00:00:00.000Z",
+            "src": "user(0)",
+            "uri": "record(0)",
+            "val": "self-label",
+          },
+        ],
+        "likeCount": 0,
+        "quoteCount": 0,
+        "record": {
+          "$type": "app.bsky.feed.post",
+          "createdAt": "1970-01-01T00:00:00.000Z",
+          "labels": {
+            "$type": "com.atproto.label.defs#selfLabels",
+            "values": [
+              {
+                "val": "self-label",
+              },
+            ],
+          },
+          "text": "hey there",
+        },
+        "replyCount": 0,
+        "repostCount": 0,
+        "uri": "record(0)",
+        "viewer": {
+          "bookmarked": false,
+          "embeddingDisabled": false,
+          "threadMuted": false,
+        },
+      },
+    },
+    {
+      "post": {
+        "author": {
+          "associated": {
+            "activitySubscription": {
+              "allowSubscriptions": "followers",
+            },
+          },
+          "did": "user(2)",
+          "handle": "carol.test",
+          "labels": [],
+          "viewer": {
+            "blockedBy": false,
+            "followedBy": "record(4)",
+            "following": "record(3)",
+            "muted": false,
+            "mutedOnlyQuoteposts": false,
+            "mutedOnlyReposts": false,
+          },
+        },
+        "bookmarkCount": 0,
+        "cid": "cids(3)",
+        "embed": {
+          "$type": "app.bsky.embed.recordWithMedia#view",
+          "media": {
+            "$type": "app.bsky.embed.images#view",
+            "images": [
+              {
+                "alt": "../dev-env/assets/key-landscape-small.jpg",
+                "fullsize": "https://bsky.public.url/img/feed_fullsize/plain/user(3)/cids(4)",
+                "thumb": "https://bsky.public.url/img/feed_thumbnail/plain/user(3)/cids(4)",
+              },
+              {
+                "alt": "../dev-env/assets/key-alt.jpg",
+                "fullsize": "https://bsky.public.url/img/feed_fullsize/plain/user(3)/cids(5)",
+                "thumb": "https://bsky.public.url/img/feed_thumbnail/plain/user(3)/cids(5)",
+              },
+            ],
+          },
+          "record": {
+            "record": {
+              "$type": "app.bsky.embed.record#viewRecord",
+              "author": {
+                "associated": {
+                  "activitySubscription": {
+                    "allowSubscriptions": "followers",
+                  },
+                },
+                "avatar": "https://bsky.public.url/img/avatar/plain/user(5)/cids(1)",
+                "createdAt": "1970-01-01T00:00:00.000Z",
+                "did": "user(4)",
+                "displayName": "bobby",
+                "handle": "bob.test",
+                "labels": [],
+                "viewer": {
+                  "blockedBy": false,
+                  "followedBy": "record(7)",
+                  "following": "record(6)",
+                  "muted": false,
+                  "mutedOnlyQuoteposts": false,
+                  "mutedOnlyReposts": false,
+                },
+              },
+              "cid": "cids(6)",
+              "embeds": [],
+              "indexedAt": "1970-01-01T00:00:00.000Z",
+              "labels": [],
+              "likeCount": 0,
+              "quoteCount": 1,
+              "replyCount": 0,
+              "repostCount": 0,
+              "uri": "record(5)",
+              "value": {
+                "$type": "app.bsky.feed.post",
+                "createdAt": "1970-01-01T00:00:00.000Z",
+                "langs": [
+                  "en-US",
+                  "i-klingon",
+                ],
+                "text": "bob back at it again!",
+              },
+            },
+          },
+        },
+        "indexedAt": "1970-01-01T00:00:00.000Z",
+        "labels": [],
+        "likeCount": 2,
+        "quoteCount": 1,
+        "record": {
+          "$type": "app.bsky.feed.post",
+          "createdAt": "1970-01-01T00:00:00.000Z",
+          "embed": {
+            "$type": "app.bsky.embed.recordWithMedia",
+            "media": {
+              "$type": "app.bsky.embed.images",
+              "images": [
+                {
+                  "alt": "../dev-env/assets/key-landscape-small.jpg",
+                  "image": {
+                    "$type": "blob",
+                    "mimeType": "image/jpeg",
+                    "ref": {
+                      "$link": "cids(4)",
+                    },
+                    "size": 4114,
+                  },
+                },
+                {
+                  "alt": "../dev-env/assets/key-alt.jpg",
+                  "image": {
+                    "$type": "blob",
+                    "mimeType": "image/jpeg",
+                    "ref": {
+                      "$link": "cids(5)",
+                    },
+                    "size": 12736,
+                  },
+                },
+              ],
+            },
+            "record": {
+              "record": {
+                "cid": "cids(6)",
+                "uri": "record(5)",
+              },
+            },
+          },
+          "text": "hi im carol",
+        },
+        "replyCount": 0,
+        "repostCount": 0,
+        "uri": "record(2)",
+        "viewer": {
+          "bookmarked": false,
+          "embeddingDisabled": false,
+          "like": "record(8)",
+          "threadMuted": false,
+        },
+      },
+    },
+  ],
+}
+`;

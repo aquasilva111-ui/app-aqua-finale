@@ -1,0 +1,95 @@
+import type { DidString } from '@atproto/lex'
+import { ForbiddenError, type Server } from '@atproto/xrpc-server'
+import type { AppContext } from '../../context.js'
+import { com } from '../../lexicons/index.js'
+import type { ModerationService } from '../../mod-service/index.js'
+import { RepoSubject, subjectFromInput } from '../../mod-service/subject.js'
+import { TagService } from '../../tag-service/index.js'
+import { getTagForReport } from '../../tag-service/util.js'
+import { isAppealReport } from '../util.js'
+
+export default function (server: Server, ctx: AppContext) {
+  server.add(com.atproto.moderation.createReport, {
+    auth: ctx.authVerifier.standard,
+    handler: async ({ input, auth }) => {
+      const requester =
+        'iss' in auth.credentials ? auth.credentials.iss : ctx.cfg.service.did
+      const { reasonType, reason, modTool } = input.body
+      const subject = subjectFromInput(input.body.subject)
+
+      // If the report is an appeal, the requester must be the author of the subject
+      if (isAppealReport(reasonType) && requester !== subject.did) {
+        throw new ForbiddenError('You cannot appeal this report')
+      }
+
+      const db = ctx.db
+
+      await ctx.moderationServiceProfile().validateReasonType(reasonType)
+      await assertValidReporter(ctx.modService(db), reasonType, requester)
+
+      const report = await db.transaction(async (dbTxn) => {
+        const moderationTxn = ctx.modService(dbTxn)
+        const { event: reportEvent, subjectStatus } =
+          await moderationTxn.report({
+            reason,
+            subject,
+            reasonType,
+            reportedBy: requester || ctx.cfg.service.did,
+            modTool,
+          })
+
+        const tagService = new TagService(
+          subject,
+          subjectStatus,
+          ctx.cfg.service.did,
+          moderationTxn,
+        )
+        await tagService.evaluateForSubject([getTagForReport(reasonType)])
+
+        return reportEvent
+      })
+
+      const body = ctx.modService(db).views.formatReport(report)
+      return {
+        encoding: 'application/json',
+        body,
+      }
+    },
+  })
+}
+
+const assertValidReporter = async (
+  modService: ModerationService,
+  reasonType: com.atproto.moderation.defs.ReasonType,
+  did: DidString,
+) => {
+  // Only the account-level status matters here: a takedown or appeal on one of
+  // the reporter's records must not block them from reporting
+  const reporterStatus = await modService.getStatus(new RepoSubject(did))
+
+  // If we don't have a mod status for the reporter, no need to do further checks
+  if (!reporterStatus) {
+    return
+  }
+
+  // For appeals, we just need to make sure that the account does not have pending appeal
+  if (isAppealReport(reasonType)) {
+    if (reporterStatus.appealed) {
+      throw new ForbiddenError(
+        'Awaiting decision on previous appeal',
+        'AlreadyAppealed',
+      )
+    }
+    return
+  }
+
+  // For non appeals, we need to make sure the reporter account is not already in takendown status
+  // This is necessary because we allow takendown accounts call createReport but that's only meant for appeals
+  // and we need to make sure takendown accounts don't abuse this endpoint
+  if (reporterStatus.takendown) {
+    throw new ForbiddenError(
+      'Report not accepted from takendown account',
+      'AccountTakedown',
+    )
+  }
+}

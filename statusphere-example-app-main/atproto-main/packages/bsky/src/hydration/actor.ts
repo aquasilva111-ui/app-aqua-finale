@@ -1,0 +1,593 @@
+import { mapDefined } from '@atproto/common'
+import {
+  type AtIdentifierString,
+  type AtUriString,
+  type DatetimeString,
+  type DidString,
+  type HandleString,
+  isDidIdentifier,
+  isHandleIdentifier,
+  normalizeHandle,
+} from '@atproto/syntax'
+import type { DataPlaneClient } from '../data-plane/client/index.js'
+import { app, chat, com } from '../lexicons/index.js'
+import type {
+  ActivitySubscription,
+  VerificationMeta,
+} from '../proto/bsky_pb.js'
+import { events } from '../telemetry/events.js'
+import type {
+  ChatDeclarationRecord,
+  GermDeclarationRecord,
+  NotificationDeclarationRecord,
+  ProfileRecord,
+  StatusRecord,
+} from '../views/types.js'
+import {
+  HydrationMap,
+  type RecordInfo,
+  isActivitySubscriptionEnabled,
+  parseDate,
+  parseRecord,
+  parseString,
+  safeTakedownRef,
+} from './util.js'
+
+type AllowActivitySubscriptions = Extract<
+  app.bsky.notification.declaration.Main['allowSubscriptions'],
+  'followers' | 'mutuals' | 'none'
+>
+
+export type Actor = {
+  did: DidString
+  handle?: HandleString
+  profile?: ProfileRecord
+  profileCid?: string
+  profileTakedownRef?: string
+  sortedAt?: Date
+  indexedAt?: Date
+  takedownRef?: string
+  isLabeler: boolean
+  allowIncomingChatsFrom?: string
+  allowGroupChatInvitesFrom?: string
+  upstreamStatus?: string
+  createdAt?: Date
+  trustedVerifier?: boolean
+  verifications: VerificationHydrationState[]
+  status?: RecordInfo<StatusRecord>
+  germ?: RecordInfo<GermDeclarationRecord>
+  allowActivitySubscriptionsFrom: AllowActivitySubscriptions
+  accountModerationTags: Set<string>
+  profileModerationTags: Set<string>
+  /**
+   * Debug information for internal development
+   */
+  debug?: {
+    pagerank?: string
+    accountTags?: string[]
+    profileTags?: string[]
+  }
+}
+
+export type VerificationHydrationState = {
+  issuer: DidString
+  uri: AtUriString
+  handle: HandleString
+  displayName: string
+  createdAt: DatetimeString
+}
+
+export type VerificationMetaRequired = Required<VerificationMeta>
+
+export type Actors = HydrationMap<DidString, Actor>
+
+export type ChatDeclaration = RecordInfo<ChatDeclarationRecord>
+export type ChatDeclarations = HydrationMap<AtUriString, ChatDeclaration>
+
+export type GermDeclaration = RecordInfo<GermDeclarationRecord>
+export type GermDeclarations = HydrationMap<AtUriString, GermDeclaration>
+
+export type NotificationDeclaration = RecordInfo<NotificationDeclarationRecord>
+export type NotificationDeclarations = HydrationMap<
+  AtUriString,
+  NotificationDeclaration
+>
+
+export type Status = RecordInfo<StatusRecord>
+export type Statuses = HydrationMap<AtUriString, Status>
+
+export type ProfileViewerState = {
+  did: DidString
+  muted?: boolean
+  mutedOnlyReposts?: boolean
+  mutedOnlyQuoteposts?: boolean
+  mutedByList?: AtUriString
+  blockedBy?: AtUriString
+  blocking?: AtUriString
+  blockedByList?: AtUriString
+  blockingByList?: AtUriString
+  following?: AtUriString
+  followedBy?: AtUriString
+}
+
+export type ProfileViewerStates = HydrationMap<
+  AtIdentifierString,
+  ProfileViewerState
+>
+
+type ActivitySubscriptionState = {
+  post: boolean
+  reply: boolean
+}
+
+export type ActivitySubscriptionStates = HydrationMap<
+  DidString,
+  ActivitySubscriptionState | undefined
+>
+
+type KnownFollowersState = {
+  count: number
+  followers: DidString[]
+}
+
+export type KnownFollowersStates = HydrationMap<
+  DidString,
+  KnownFollowersState | undefined
+>
+
+type KnownLikersState = {
+  count: number
+  actors: DidString[]
+}
+
+export type KnownLikersStates = HydrationMap<
+  AtUriString,
+  KnownLikersState | undefined
+>
+
+export type ProfileAgg = {
+  followers: number
+  follows: number
+  posts: number
+  lists: number
+  feeds: number
+  starterPacks: number
+}
+
+export type ProfileAggs = HydrationMap<DidString, ProfileAgg>
+
+export class ActorHydrator {
+  constructor(public dataplane: DataPlaneClient) {}
+
+  async getRepoRevSafe(did: string | null): Promise<string | null> {
+    if (!did) return null
+    try {
+      const res = await this.dataplane.getLatestRev({ actorDid: did })
+      return parseString(res.rev) ?? null
+    } catch {
+      return null
+    }
+  }
+
+  /**
+   * @note handles do not need to be normalized
+   */
+  async getDids(
+    handleOrDids: AtIdentifierString[],
+    opts?: { lookupUnidirectional?: boolean },
+  ): Promise<(DidString | undefined)[]> {
+    const didByHandle = new Map<HandleString, DidString>()
+
+    const handles = handleOrDids.filter(isHandleIdentifier)
+    if (handles.length) {
+      const { dids } = await this.dataplane.getDidsByHandles({
+        handles: handles.map(normalizeHandle),
+        lookupUnidirectional: opts?.lookupUnidirectional,
+      })
+
+      for (let i = 0; i < handles.length; i++) {
+        const did = parseString<DidString>(dids[i])
+        if (did) didByHandle.set(handles[i], did)
+      }
+    }
+
+    return handleOrDids.map((id) =>
+      isDidIdentifier(id) ? id : didByHandle.get(id),
+    )
+  }
+
+  async getDidsDefined(
+    handleOrDids: AtIdentifierString[],
+  ): Promise<DidString[]> {
+    const res = await this.getDids(handleOrDids)
+    return res.filter((v) => v != null)
+  }
+
+  async getActors(
+    dids: DidString[],
+    opts: {
+      includeTakedowns?: boolean
+      skipCacheForDids?: DidString[]
+    } = {},
+  ): Promise<Actors> {
+    const map: Actors = new HydrationMap()
+    if (!dids.length) return map
+
+    const { includeTakedowns = false, skipCacheForDids } = opts
+
+    const res = await this.dataplane.getActors({ dids, skipCacheForDids })
+    for (let i = 0; i < dids.length; i++) {
+      const did = dids[i]
+
+      const actor = res.actors[i]
+      const isNoHosted =
+        actor.takenDown ||
+        (actor.upstreamStatus && actor.upstreamStatus !== 'active')
+      if (
+        !actor.exists ||
+        (isNoHosted && !includeTakedowns) ||
+        !!actor.tombstonedAt
+      ) {
+        map.set(did, null)
+        continue
+      }
+
+      const profile = actor.profile?.record
+        ? parseRecord(
+            app.bsky.actor.profile.main,
+            actor.profile,
+            includeTakedowns,
+          )
+        : undefined
+
+      const status = actor.statusRecord
+        ? parseRecord(
+            app.bsky.actor.status.main,
+            actor.statusRecord,
+            /*
+             * Always true, we filter this out in the `Views.status()`. If we
+             * ever remove that filter, we'll want to reinstate this here.
+             */
+            true,
+          )
+        : undefined
+
+      const germ = actor.germRecord
+        ? parseRecord(
+            com.germnetwork.declaration.main,
+            actor.germRecord,
+            includeTakedowns,
+          )
+        : undefined
+
+      const verifications = mapDefined(
+        Object.entries(actor.verifiedBy) as [DidString, VerificationMeta][],
+        ([actorDid, verificationMeta]):
+          VerificationHydrationState | undefined => {
+          if (
+            verificationMeta.handle &&
+            verificationMeta.rkey &&
+            verificationMeta.sortedAt
+          ) {
+            return {
+              issuer: actorDid,
+              uri: `at://${actorDid}/app.bsky.graph.verification/${verificationMeta.rkey}`,
+              handle: verificationMeta.handle as HandleString,
+              displayName: verificationMeta.displayName,
+              createdAt: (
+                parseDate(verificationMeta.sortedAt) ?? new Date(0)
+              ).toISOString() as DatetimeString,
+            }
+          }
+          // Filter out the verification meta that doesn't contain all info.
+          return undefined
+        },
+      )
+
+      const allowActivitySubscriptionsFrom = (
+        val: string,
+      ): AllowActivitySubscriptions => {
+        switch (val) {
+          case 'followers':
+          case 'mutuals':
+          case 'none':
+            return val
+          default:
+            // The dataplane should set the default of "FOLLOWERS". Just in case.
+            return 'followers'
+        }
+      }
+
+      const debug = {
+        pagerank: actor.pagerank ? actor.pagerank.toString() : undefined,
+        accountTags: actor.tags,
+        profileTags: actor.profileTags,
+      }
+
+      map.set(did, {
+        did,
+        handle: parseString<HandleString>(actor.handle),
+        profile: profile?.record,
+        profileCid: profile?.cid,
+        profileTakedownRef: profile?.takedownRef,
+        sortedAt: profile?.sortedAt,
+        indexedAt: profile?.indexedAt,
+        takedownRef: safeTakedownRef(actor),
+        isLabeler: actor.labeler ?? false,
+        allowIncomingChatsFrom: actor.allowIncomingChatsFrom || undefined,
+        allowGroupChatInvitesFrom: actor.allowGroupChatInvitesFrom || undefined,
+        upstreamStatus: actor.upstreamStatus || undefined,
+        createdAt: parseDate(actor.createdAt),
+        trustedVerifier: actor.trustedVerifier,
+        verifications,
+        status: status,
+        germ: germ,
+        allowActivitySubscriptionsFrom: allowActivitySubscriptionsFrom(
+          actor.allowActivitySubscriptionsFrom,
+        ),
+        accountModerationTags: new Set(actor.tags),
+        profileModerationTags: new Set(actor.profileTags),
+        debug,
+      })
+    }
+
+    return map
+  }
+
+  async getChatDeclarations(
+    uris: AtUriString[],
+    includeTakedowns = false,
+  ): Promise<ChatDeclarations> {
+    const map: ChatDeclarations = new HydrationMap()
+    if (!uris.length) return map
+
+    const res = await this.dataplane.getActorChatDeclarationRecords({ uris })
+    for (let i = 0; i < uris.length; i++) {
+      const uri = uris[i]
+      const record = parseRecord(
+        chat.bsky.actor.declaration.main,
+        res.records[i],
+        includeTakedowns,
+      )
+      map.set(uri, record ?? null)
+    }
+
+    return map
+  }
+
+  async getGermDeclarations(
+    uris: AtUriString[],
+    includeTakedowns = false,
+  ): Promise<GermDeclarations> {
+    const map: GermDeclarations = new HydrationMap()
+    if (!uris.length) return map
+
+    const res = await this.dataplane.getGermDeclarationRecords({ uris })
+    for (let i = 0; i < uris.length; i++) {
+      const record = parseRecord(
+        com.germnetwork.declaration.main,
+        res.records[i],
+        includeTakedowns,
+      )
+      map.set(uris[i], record ?? null)
+    }
+
+    return map
+  }
+
+  async getNotificationDeclarations(
+    uris: AtUriString[],
+    includeTakedowns = false,
+  ): Promise<NotificationDeclarations> {
+    const map: NotificationDeclarations = new HydrationMap()
+    if (!uris.length) return map
+
+    const res = await this.dataplane.getNotificationDeclarationRecords({
+      uris,
+    })
+    for (let i = 0; i < uris.length; i++) {
+      const uri = uris[i]
+      const record = parseRecord(
+        app.bsky.notification.declaration.main,
+        res.records[i],
+        includeTakedowns,
+      )
+      map.set(uri, record ?? null)
+    }
+
+    return map
+  }
+
+  async getStatus(
+    uris: AtUriString[],
+    includeTakedowns = false,
+  ): Promise<Statuses> {
+    const map: Statuses = new HydrationMap()
+    if (!uris.length) return map
+
+    const res = await this.dataplane.getStatusRecords({ uris })
+    for (let i = 0; i < uris.length; i++) {
+      const uri = uris[i]
+      const record = parseRecord(
+        app.bsky.actor.status.main,
+        res.records[i],
+        includeTakedowns,
+      )
+      map.set(uri, record ?? null)
+    }
+
+    return map
+  }
+
+  // "naive" because this method does not verify the existence of the list itself
+  // a later check in the main hydrator will remove list uris that have been deleted or
+  // repurposed to "curate lists"
+  async getProfileViewerStatesNaive(
+    actors: AtIdentifierString[],
+    viewer: DidString,
+  ): Promise<ProfileViewerStates> {
+    const map: ProfileViewerStates = new HydrationMap()
+    if (!actors.length) return map
+
+    // @TODO we could use "await this.getDids(actors)" here to resolve the
+    // handles (no other code change should be needed). This was not done as
+    // part of this PR to avoid changing the behavior of this method.
+    const actorDids = actors.map((a) => (isDidIdentifier(a) ? a : undefined))
+
+    // getRelationships requires DidString so we remove anything that isn't one
+    const actorDidsDefined = Array.from(
+      new Set(
+        actorDids
+          .filter((did) => did != null)
+          // Since we special case self-relationship below, we can skip querying
+          // the dataplane for the viewer's own DID if it's included in the
+          // input.
+          .filter((did) => did !== viewer),
+      ),
+    )
+
+    const res = await this.dataplane.getRelationships({
+      actorDid: viewer,
+      targetDids: actorDidsDefined,
+    })
+
+    const actorToDid = new Map<AtIdentifierString, DidString | undefined>(
+      actors.map((actor, i) => [actor, actorDids[i]]),
+    )
+
+    for (let i = 0; i < actors.length; i++) {
+      const actor = actors[i]
+
+      const did = actorToDid.get(actor)
+      // ignore unresolved handles
+      if (!did) continue
+
+      if (did === viewer) {
+        // ignore self-follows, self-mutes, self-blocks, self-activity-subscriptions
+        map.set(actor, { did })
+        continue
+      }
+
+      // Get the index that was used to query the relationships for this actor
+      const index = actorDidsDefined.indexOf(did)
+      if (index === -1) continue
+
+      const rels = res.relationships[index]
+      map.set(actor, {
+        did,
+        muted: rels.muted ?? false,
+        mutedOnlyReposts: rels.mutedOnlyReposts ?? false,
+        mutedOnlyQuoteposts: rels.mutedOnlyQuoteposts ?? false,
+        mutedByList: parseString(rels.mutedByList),
+        blockedBy: parseString(rels.blockedBy),
+        blocking: parseString<AtUriString>(rels.blocking),
+        blockedByList: parseString(rels.blockedByList),
+        blockingByList: parseString(rels.blockingByList),
+        following: parseString<AtUriString>(rels.following),
+        followedBy: parseString(rels.followedBy),
+      })
+    }
+
+    return map
+  }
+
+  async getKnownFollowers(
+    dids: DidString[],
+    viewer: DidString | null,
+  ): Promise<KnownFollowersStates> {
+    const map: KnownFollowersStates = new HydrationMap()
+    if (!viewer) return map
+    if (!dids.length) return map
+
+    try {
+      const { results } = await this.dataplane.sampleFollowsFollowing(
+        {
+          actorDid: viewer,
+          targetDids: dids,
+          limit: 5,
+        },
+        { signal: AbortSignal.timeout(100) },
+      )
+      for (let i = 0; i < dids.length; i++) {
+        const result = results[i]
+        const followerDids = result?.dids
+        map.set(
+          dids[i],
+          followerDids && followerDids.length > 0
+            ? {
+                count: result.totalKnown || followerDids.length,
+                followers: followerDids as DidString[],
+              }
+            : undefined,
+        )
+      }
+    } catch (err) {
+      // Fail open.
+      events.hydrationFailed({ source: 'known_followers', err })
+    }
+
+    return map
+  }
+
+  async getActivitySubscriptions(
+    dids: DidString[],
+    viewer: DidString | null,
+  ): Promise<ActivitySubscriptionStates> {
+    const map: ActivitySubscriptionStates = new HydrationMap()
+    if (!viewer) return map
+    if (!dids.length) return map
+
+    try {
+      const { subscriptions } =
+        await this.dataplane.getActivitySubscriptionsByActorAndSubjects(
+          { actorDid: viewer, subjectDids: dids },
+          { signal: AbortSignal.timeout(100) },
+        )
+
+      for (let i = 0; i < dids.length; i++) {
+        // @NOTE Although not typed as nullable, the code here used to defend
+        // against potentially missing subscription objects in the response, so
+        // we keep that defense in place.
+        const subscription = subscriptions[i] as
+          ActivitySubscription | undefined
+
+        const state = {
+          post: subscription?.post != null,
+          reply: subscription?.reply != null,
+        }
+
+        const did = dids[i]!
+        if (isActivitySubscriptionEnabled(state)) {
+          map.set(did, state)
+        } else {
+          map.set(did, undefined)
+        }
+      }
+    } catch (err) {
+      // Fail open.
+      events.hydrationFailed({ source: 'activity_subscriptions', err })
+    }
+
+    return map
+  }
+
+  async getProfileAggregates(dids: DidString[]): Promise<ProfileAggs> {
+    const map: ProfileAggs = new HydrationMap()
+    if (!dids.length) return map
+
+    const counts = await this.dataplane.getCountsForUsers({ dids })
+    for (let i = 0; i < dids.length; i++) {
+      const did = dids[i]
+      map.set(did, {
+        followers: counts.followers[i] ?? 0,
+        follows: counts.following[i] ?? 0,
+        posts: counts.posts[i] ?? 0,
+        lists: counts.lists[i] ?? 0,
+        feeds: counts.feeds[i] ?? 0,
+        starterPacks: counts.starterPacks[i] ?? 0,
+      })
+    }
+
+    return map
+  }
+}

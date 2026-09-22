@@ -1,0 +1,83 @@
+import { type PlainMessage, Timestamp } from '@bufbuild/protobuf'
+import type { ServiceImpl } from '@connectrpc/connect'
+import { keyBy } from '@atproto/common'
+import type { Service } from '../../../proto/bsky_connect.js'
+import {
+  type Bookmark,
+  GetBookmarksByActorAndSubjectsResponse,
+} from '../../../proto/bsky_pb.js'
+import { Namespaces } from '../../../stash.js'
+import type { Database } from '../db/index.js'
+import { StashKeyKey } from '../db/pagination.js'
+
+export default (db: Database): Partial<ServiceImpl<typeof Service>> => ({
+  async getActorBookmarks(req) {
+    const { actorDid, cursor, limit } = req
+    const { ref } = db.db.dynamic
+
+    let builder = db.db
+      .selectFrom('bookmark')
+      .where('bookmark.creator', '=', actorDid)
+      .selectAll()
+
+    const key = new StashKeyKey(ref('bookmark.key'))
+    builder = key.paginate(builder, {
+      cursor,
+      limit,
+    })
+
+    const page = key.page(await builder.execute(), limit)
+    return {
+      bookmarks: page.items.map((b) => ({
+        key: b.key,
+        subject: b.subjectUri,
+      })),
+      cursor: page.cursor,
+    }
+  },
+
+  async getBookmarksByActorAndSubjects(req) {
+    const { actorDid, uris } = req
+
+    if (uris.length === 0) {
+      return new GetBookmarksByActorAndSubjectsResponse({
+        bookmarks: [],
+      })
+    }
+
+    const res = await db.db
+      .selectFrom('bookmark')
+      .where('bookmark.creator', '=', actorDid)
+      .where('bookmark.subjectUri', 'in', uris)
+      .selectAll()
+      .execute()
+
+    const byUri = keyBy(res, 'subjectUri')
+    const bookmarks = uris.map((did): PlainMessage<Bookmark> => {
+      const bookmark = byUri.get(did)
+      if (!bookmark) {
+        return {
+          ref: undefined,
+          subjectUri: '',
+          subjectCid: '',
+          indexedAt: undefined,
+        }
+      }
+
+      return {
+        ref: {
+          actorDid,
+          namespace: Namespaces.AppBskyBookmarkDefsBookmark.$type,
+          key: bookmark.key,
+        },
+        subjectUri: bookmark.subjectUri,
+        subjectCid: bookmark.subjectCid,
+        indexedAt: Timestamp.fromDate(new Date(bookmark.indexedAt)),
+      }
+    })
+
+    return {
+      bookmarks,
+    }
+  },
+})

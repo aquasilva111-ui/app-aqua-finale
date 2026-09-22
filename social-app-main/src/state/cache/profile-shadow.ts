@@ -1,0 +1,339 @@
+import {useEffect, useMemo, useState} from 'react'
+import {type AtUriString} from '@atproto/lex'
+import {type QueryClient} from '@tanstack/react-query'
+import {EventEmitter} from 'eventemitter3'
+
+import {batchedUpdates} from '#/lib/batchedUpdates'
+import {findAllProfilesInQueryData as findAllProfilesInActivitySubscriptionsQueryData} from '#/state/queries/activity-subscriptions'
+import {findAllProfilesInQueryData as findAllProfilesInActorSearchQueryData} from '#/state/queries/actor-search'
+import {findAllProfilesInQueryData as findAllProfilesInExploreFeedPreviewsQueryData} from '#/state/queries/explore-feed-previews'
+import {findAllProfilesInQueryData as findAllProfilesInContactMatchesQueryData} from '#/state/queries/find-contacts'
+import {findAllProfilesInQueryData as findAllProfilesInKnownFollowersQueryData} from '#/state/queries/known-followers'
+import {findAllProfilesInQueryData as findAllProfilesInListMembersQueryData} from '#/state/queries/list-members'
+import {findAllProfilesInQueryData as findAllProfilesInGetConvoQueryData} from '#/state/queries/messages/conversation'
+import {findAllProfilesInQueryData as findAllProfilesInListConvoRequestsQueryData} from '#/state/queries/messages/list-conversation-requests'
+import {findAllProfilesInQueryData as findAllProfilesInListConvosQueryData} from '#/state/queries/messages/list-conversations'
+import {findAllProfilesInQueryData as findAllProfilesInMessagesQueryData} from '#/state/queries/messages/list-convo-members'
+import {findAllProfilesInQueryData as findAllProfilesInMyBlockedAccountsQueryData} from '#/state/queries/my-blocked-accounts'
+import {findAllProfilesInQueryData as findAllProfilesInMyMutedAccountsQueryData} from '#/state/queries/my-muted-accounts'
+import {findAllProfilesInQueryData as findAllProfilesInNotifsQueryData} from '#/state/queries/notifications/feed'
+import {
+  type FeedPage,
+  findAllProfilesInQueryData as findAllProfilesInFeedsQueryData,
+} from '#/state/queries/post-feed'
+import {findAllProfilesInQueryData as findAllProfilesInPostLikedByQueryData} from '#/state/queries/post-liked-by'
+import {findAllProfilesInQueryData as findAllProfilesInPostQuotesQueryData} from '#/state/queries/post-quotes'
+import {findAllProfilesInQueryData as findAllProfilesInPostRepostedByQueryData} from '#/state/queries/post-reposted-by'
+import {findAllProfilesInQueryData as findAllProfilesInProfileQueryData} from '#/state/queries/profile'
+import {findAllProfilesInQueryData as findAllProfilesInProfileFollowersQueryData} from '#/state/queries/profile-followers'
+import {findAllProfilesInQueryData as findAllProfilesInProfileFollowsQueryData} from '#/state/queries/profile-follows'
+import {findAllProfilesInQueryData as findAllProfilesInSuggestedFollowsQueryData} from '#/state/queries/suggested-follows'
+import {findAllProfilesInQueryData as findAllProfilesInSuggestedOnboardingUsersQueryData} from '#/state/queries/trending/useGetSuggestedOnboardingUsersQuery'
+import {findAllProfilesInQueryData as findAllProfilesInSuggestedUsersForDiscoverQueryData} from '#/state/queries/trending/useGetSuggestedUsersForDiscoverQuery'
+import {findAllProfilesInQueryData as findAllProfilesInSuggestedUsersForExploreQueryData} from '#/state/queries/trending/useGetSuggestedUsersForExploreQuery'
+import {findAllProfilesInQueryData as findAllProfilesInSuggestedUsersForSeeMoreQueryData} from '#/state/queries/trending/useGetSuggestedUsersForSeeMoreQuery'
+import {findAllProfilesInQueryData as findAllProfilesInPostThreadV2QueryData} from '#/state/queries/usePostThread/queryCache'
+import {type app} from '#/lexicons'
+import type * as bsky from '#/types/bsky'
+import {castAsShadow, type Shadow} from './types'
+
+export type {Shadow} from './types'
+
+export interface ProfileShadow {
+  followingUri: string | undefined
+  muted: boolean | undefined
+  mutedOnlyReposts: boolean | undefined
+  blockingUri: string | undefined
+  verification: app.bsky.actor.defs.VerificationState
+  status: app.bsky.actor.defs.StatusView | undefined
+  activitySubscription:
+    app.bsky.notification.defs.ActivitySubscription | undefined
+}
+
+const shadows: WeakMap<
+  bsky.profile.AnyProfileView,
+  Partial<ProfileShadow>
+> = new WeakMap()
+const emitter = new EventEmitter()
+
+type ShadowUpdateEventPayload = {did: string; shadow: Partial<ProfileShadow>}
+
+/**
+ * Subscribe to all profile shadow updates, regardless of did. Useful for
+ * non-React consumers like the Convo agent. Returns an unlisten function.
+ */
+export function listenProfileShadowUpdate(
+  listener: (payload: ShadowUpdateEventPayload) => void,
+): () => void {
+  emitter.addListener('shadow-update', listener)
+  return () => {
+    emitter.removeListener('shadow-update', listener)
+  }
+}
+
+export function useProfileShadow<
+  TProfileView extends bsky.profile.AnyProfileView,
+>(profile: TProfileView): Shadow<TProfileView> {
+  const [shadow, setShadow] = useState(() => shadows.get(profile))
+  const [prevPost, setPrevPost] = useState(profile)
+  if (profile !== prevPost) {
+    setPrevPost(profile)
+    setShadow(shadows.get(profile))
+  }
+
+  useEffect(() => {
+    function onUpdate() {
+      setShadow(shadows.get(profile))
+    }
+    emitter.addListener(profile.did, onUpdate)
+    return () => {
+      emitter.removeListener(profile.did, onUpdate)
+    }
+  }, [profile])
+
+  return useMemo(() => {
+    if (shadow) {
+      return mergeShadow(profile, shadow)
+    } else {
+      return castAsShadow(profile)
+    }
+  }, [profile, shadow])
+}
+
+/**
+ * Same as useProfileShadow, but allows for the profile to be undefined.
+ * This is useful for when the profile is not guaranteed to be loaded yet.
+ */
+export function useMaybeProfileShadow<
+  TProfileView extends bsky.profile.AnyProfileView,
+>(profile?: TProfileView): Shadow<TProfileView> | undefined {
+  const [shadow, setShadow] = useState(() =>
+    profile ? shadows.get(profile) : undefined,
+  )
+  const [prevPost, setPrevPost] = useState(profile)
+  if (profile !== prevPost) {
+    setPrevPost(profile)
+    setShadow(profile ? shadows.get(profile) : undefined)
+  }
+
+  useEffect(() => {
+    if (!profile) return
+    function onUpdate() {
+      if (!profile) return
+      setShadow(shadows.get(profile))
+    }
+    emitter.addListener(profile.did, onUpdate)
+    return () => {
+      emitter.removeListener(profile.did, onUpdate)
+    }
+  }, [profile])
+
+  return useMemo(() => {
+    if (!profile) return undefined
+    if (shadow) {
+      return mergeShadow(profile, shadow)
+    } else {
+      return castAsShadow(profile)
+    }
+  }, [profile, shadow])
+}
+
+/**
+ * Takes a list of posts, and returns a list of DIDs that should be filtered out
+ *
+ * Note: it doesn't retroactively scan the cache, but only listens to new updates.
+ * The use case here is intended for removing a post from a feed after you mute the author
+ */
+export function usePostAuthorShadowFilter(data?: FeedPage[]) {
+  const [trackedDids, setTrackedDids] = useState<string[]>(
+    () =>
+      data?.flatMap(page =>
+        page.slices.flatMap(slice =>
+          slice.items.map(item => item.post.author.did),
+        ),
+      ) ?? [],
+  )
+  const [authors, setAuthors] = useState(
+    new Map<string, {muted: boolean; blocked: boolean}>(),
+  )
+
+  useEffect(() => {
+    setTrackedDids(prev => {
+      const currentDids = new Set(prev)
+      let hasNew = false
+      for (const slice of data?.flatMap(page => page.slices) ?? []) {
+        for (const item of slice.items) {
+          const author = item.post.author
+          if (!currentDids.has(author.did)) {
+            hasNew = true
+            currentDids.add(author.did)
+          }
+        }
+      }
+      return hasNew ? [...currentDids] : prev
+    })
+  }, [data])
+
+  useEffect(() => {
+    const unsubs: Array<() => void> = []
+
+    for (const did of trackedDids) {
+      function onUpdate(value: Partial<ProfileShadow>) {
+        setAuthors(prev => {
+          const prevValue = prev.get(did)
+          const next = new Map(prev)
+          next.set(did, {
+            blocked: Boolean(value.blockingUri ?? prevValue?.blocked ?? false),
+            muted: Boolean(value.muted ?? prevValue?.muted ?? false),
+          })
+          return next
+        })
+      }
+      emitter.addListener(did, onUpdate)
+      unsubs.push(() => {
+        emitter.removeListener(did, onUpdate)
+      })
+    }
+
+    return () => {
+      unsubs.map(fn => fn())
+    }
+  }, [trackedDids])
+
+  return useMemo(() => {
+    const dids: Array<string> = []
+
+    for (const [did, value] of authors.entries()) {
+      if (value.blocked || value.muted) {
+        dids.push(did)
+      }
+    }
+
+    return dids
+  }, [authors])
+}
+
+export function updateProfileShadow(
+  queryClient: QueryClient,
+  did: string,
+  value: Partial<ProfileShadow>,
+) {
+  const cachedProfiles = findProfilesInCache(queryClient, did)
+  for (let profile of cachedProfiles) {
+    shadows.set(profile, {...shadows.get(profile), ...value})
+  }
+  batchedUpdates(() => {
+    emitter.emit(did, value)
+    emitter.emit('shadow-update', {
+      did,
+      shadow: value,
+    } satisfies ShadowUpdateEventPayload)
+  })
+}
+
+/**
+ * Returns true if merging `shadow` into `profile` would change nothing, i.e.
+ * `mergeShadow` would be a no-op. Object-valued fields are compared by
+ * reference, so this can return false negatives - callers may do redundant
+ * merges, but never skip a real change.
+ */
+export function isProfileShadowApplied<
+  TProfileView extends bsky.profile.AnyProfileView,
+>(profile: TProfileView, shadow: Partial<ProfileShadow>): boolean {
+  if ('followingUri' in shadow) {
+    if (profile.viewer?.following !== shadow.followingUri) return false
+  }
+  if ('muted' in shadow) {
+    if (profile.viewer?.muted !== shadow.muted) return false
+  }
+  if ('mutedOnlyReposts' in shadow) {
+    if (profile.viewer?.mutedOnlyReposts !== shadow.mutedOnlyReposts) {
+      return false
+    }
+  }
+  if ('blockingUri' in shadow) {
+    if (profile.viewer?.blocking !== shadow.blockingUri) return false
+  }
+  if ('activitySubscription' in shadow) {
+    if (profile.viewer?.activitySubscription !== shadow.activitySubscription) {
+      return false
+    }
+  }
+  if ('verification' in shadow) {
+    if (profile.verification !== shadow.verification) return false
+  }
+  if ('status' in shadow) {
+    const current = 'status' in profile ? profile.status : undefined
+    if (current !== shadow.status) return false
+  }
+  return true
+}
+
+export function mergeShadow<TProfileView extends bsky.profile.AnyProfileView>(
+  profile: TProfileView,
+  shadow: Partial<ProfileShadow>,
+): Shadow<TProfileView> {
+  return castAsShadow({
+    ...profile,
+    viewer: {
+      ...(profile.viewer || {}),
+      following:
+        'followingUri' in shadow
+          ? (shadow.followingUri as AtUriString)
+          : profile.viewer?.following,
+      muted: 'muted' in shadow ? shadow.muted : profile.viewer?.muted,
+      mutedOnlyReposts:
+        'mutedOnlyReposts' in shadow
+          ? shadow.mutedOnlyReposts
+          : profile.viewer?.mutedOnlyReposts,
+      blocking:
+        'blockingUri' in shadow
+          ? (shadow.blockingUri as AtUriString)
+          : profile.viewer?.blocking,
+      activitySubscription:
+        'activitySubscription' in shadow
+          ? shadow.activitySubscription
+          : profile.viewer?.activitySubscription,
+    } satisfies app.bsky.actor.defs.ViewerState,
+    verification:
+      'verification' in shadow ? shadow.verification : profile.verification,
+    status:
+      'status' in shadow
+        ? shadow.status
+        : 'status' in profile
+          ? profile.status
+          : undefined,
+  })
+}
+
+function* findProfilesInCache(
+  queryClient: QueryClient,
+  did: string,
+): Generator<bsky.profile.AnyProfileView, void> {
+  yield* findAllProfilesInListMembersQueryData(queryClient, did)
+  yield* findAllProfilesInMyBlockedAccountsQueryData(queryClient, did)
+  yield* findAllProfilesInMyMutedAccountsQueryData(queryClient, did)
+  yield* findAllProfilesInPostLikedByQueryData(queryClient, did)
+  yield* findAllProfilesInPostRepostedByQueryData(queryClient, did)
+  yield* findAllProfilesInPostQuotesQueryData(queryClient, did)
+  yield* findAllProfilesInProfileQueryData(queryClient, did)
+  yield* findAllProfilesInProfileFollowersQueryData(queryClient, did)
+  yield* findAllProfilesInProfileFollowsQueryData(queryClient, did)
+  yield* findAllProfilesInSuggestedOnboardingUsersQueryData(queryClient, did)
+  yield* findAllProfilesInSuggestedUsersForDiscoverQueryData(queryClient, did)
+  yield* findAllProfilesInSuggestedUsersForExploreQueryData(queryClient, did)
+  yield* findAllProfilesInSuggestedUsersForSeeMoreQueryData(queryClient, did)
+  yield* findAllProfilesInSuggestedFollowsQueryData(queryClient, did)
+  yield* findAllProfilesInActorSearchQueryData(queryClient, did)
+  yield* findAllProfilesInListConvosQueryData(queryClient, did)
+  yield* findAllProfilesInListConvoRequestsQueryData(queryClient, did)
+  yield* findAllProfilesInFeedsQueryData(queryClient, did)
+  yield* findAllProfilesInPostThreadV2QueryData(queryClient, did)
+  yield* findAllProfilesInKnownFollowersQueryData(queryClient, did)
+  yield* findAllProfilesInExploreFeedPreviewsQueryData(queryClient, did)
+  yield* findAllProfilesInActivitySubscriptionsQueryData(queryClient, did)
+  yield* findAllProfilesInNotifsQueryData(queryClient, did)
+  yield* findAllProfilesInContactMatchesQueryData(queryClient, did)
+  yield* findAllProfilesInMessagesQueryData(queryClient, did)
+  yield* findAllProfilesInGetConvoQueryData(queryClient, did)
+}

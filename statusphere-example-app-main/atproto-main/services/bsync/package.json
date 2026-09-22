@@ -1,0 +1,9 @@
+{
+  "name": "bsync-service",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@atproto/bsync": "workspace:^",
+    "dd-trace": "^5.103.0"
+  }
+}

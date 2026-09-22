@@ -1,0 +1,154 @@
+import type { Insertable, Selectable } from 'kysely'
+import type { Cid } from '@atproto/lex'
+import { AtUri, normalizeDatetimeAlways } from '@atproto/syntax'
+import { app } from '../../../../lexicons/index.js'
+import type { BackgroundQueue } from '../../background.js'
+import type {
+  DatabaseSchema,
+  DatabaseSchemaType,
+} from '../../db/database-schema.js'
+import type { Database } from '../../db/index.js'
+import type { Notification } from '../../db/tables/notification.js'
+import { countAll, excluded } from '../../db/util.js'
+import { RecordProcessor } from '../processor.js'
+
+type Notif = Insertable<Notification>
+type IndexedLike = Selectable<DatabaseSchemaType['like']>
+
+const insertFn = async (
+  db: DatabaseSchema,
+  uri: AtUri,
+  cid: Cid,
+  obj: app.bsky.feed.like.Main,
+  timestamp: string,
+): Promise<IndexedLike | null> => {
+  const inserted = await db
+    .insertInto('like')
+    .values({
+      uri: uri.toString(),
+      cid: cid.toString(),
+      creator: uri.host,
+      subject: obj.subject.uri,
+      subjectCid: obj.subject.cid,
+      via: obj.via?.uri,
+      viaCid: obj.via?.cid,
+      createdAt: normalizeDatetimeAlways(obj.createdAt),
+      indexedAt: timestamp,
+    })
+    .onConflict((oc) => oc.doNothing())
+    .returningAll()
+    .executeTakeFirst()
+  return inserted || null
+}
+
+const findDuplicate = async (
+  db: DatabaseSchema,
+  uri: AtUri,
+  obj: app.bsky.feed.like.Main,
+): Promise<AtUri | null> => {
+  const found = await db
+    .selectFrom('like')
+    .where('creator', '=', uri.host)
+    .where('subject', '=', obj.subject.uri)
+    .selectAll()
+    .executeTakeFirst()
+  return found ? new AtUri(found.uri) : null
+}
+
+const notifsForInsert = (obj: IndexedLike) => {
+  const subjectUri = new AtUri(obj.subject)
+  // prevent self-notifications
+  const isLikeFromSubjectUser = subjectUri.host === obj.creator
+  if (isLikeFromSubjectUser) {
+    return []
+  }
+
+  const notifs: Notif[] = [
+    // Notification to the author of the liked record.
+    {
+      did: subjectUri.host,
+      author: obj.creator,
+      recordUri: obj.uri,
+      recordCid: obj.cid,
+      reason: 'like' as const,
+      reasonSubject: subjectUri.toString(),
+      sortAt: obj.sortAt,
+    },
+  ]
+
+  if (obj.via) {
+    const viaUri = new AtUri(obj.via)
+    const isLikeFromViaSubjectUser = viaUri.host === obj.creator
+    // prevent self-notifications
+    if (!isLikeFromViaSubjectUser) {
+      notifs.push(
+        // Notification to the reposter via whose repost the like was made.
+        {
+          did: viaUri.host,
+          author: obj.creator,
+          recordUri: obj.uri,
+          recordCid: obj.cid,
+          reason: 'like-via-repost' as const,
+          reasonSubject: viaUri.toString(),
+          sortAt: obj.sortAt,
+        },
+      )
+    }
+  }
+
+  return notifs
+}
+
+const deleteFn = async (
+  db: DatabaseSchema,
+  uri: AtUri,
+): Promise<IndexedLike | null> => {
+  const deleted = await db
+    .deleteFrom('like')
+    .where('uri', '=', uri.toString())
+    .returningAll()
+    .executeTakeFirst()
+  return deleted || null
+}
+
+const notifsForDelete = (
+  deleted: IndexedLike,
+  replacedBy: IndexedLike | null,
+) => {
+  const toDelete = replacedBy ? [] : [deleted.uri]
+  return { notifs: [], toDelete }
+}
+
+const updateAggregates = async (db: DatabaseSchema, like: IndexedLike) => {
+  const likeCountQb = db
+    .insertInto('post_agg')
+    .values({
+      uri: like.subject,
+      likeCount: db
+        .selectFrom('like')
+        .where('like.subject', '=', like.subject)
+        .select(countAll.as('count')),
+    })
+    .onConflict((oc) =>
+      oc.column('uri').doUpdateSet({ likeCount: excluded(db, 'likeCount') }),
+    )
+  await likeCountQb.execute()
+}
+
+export type PluginType = ReturnType<typeof makePlugin>
+export const makePlugin = (
+  db: Database,
+  background: BackgroundQueue<Database>,
+) => {
+  return new RecordProcessor(db, background, {
+    schema: app.bsky.feed.like.main,
+    insertFn,
+    findDuplicate,
+    deleteFn,
+    notifsForInsert,
+    notifsForDelete,
+    updateAggregates,
+  })
+}
+
+export default makePlugin

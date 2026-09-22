@@ -1,0 +1,241 @@
+import { mapDefined } from '@atproto/common'
+import type { AtUriString, DatetimeString } from '@atproto/syntax'
+import { InvalidRequestError, type Server } from '@atproto/xrpc-server'
+import type { ServerConfig } from '../../../../config.js'
+import type { AppContext } from '../../../../context.js'
+import type {
+  HydrateCtxWithViewer,
+  Hydrator,
+} from '../../../../hydration/hydrator.js'
+import { app } from '../../../../lexicons/index.js'
+import {
+  type HydrationFnInput,
+  type PresentationFnInput,
+  type RulesFnInput,
+  type SkeletonFnInput,
+  createPipeline,
+} from '../../../../pipeline.js'
+import type { Notification } from '../../../../proto/bsky_pb.js'
+import { uriToDid as didFromUri } from '../../../../util/uris.js'
+import type { Views } from '../../../../views/index.js'
+import { isPostRecordType } from '../../../../views/types.js'
+import { fillPage, resHeaders } from '../../../util.js'
+
+export default function (server: Server, ctx: AppContext) {
+  const listNotifications = createPipeline(
+    skeleton,
+    hydration,
+    noBlockOrMutesOrNeedsFiltering,
+    presentation,
+  )
+  server.add(app.bsky.notification.listNotifications, {
+    auth: ctx.authVerifier.standard,
+    handler: async ({ params, auth, req }) => {
+      if (params.seenAt) {
+        throw new InvalidRequestError('The seenAt parameter is unsupported')
+      }
+      const viewer = auth.credentials.iss
+      const labelers = ctx.reqLabelers(req)
+      const hydrateCtx = await ctx.hydrator.createContext({ labelers, viewer })
+
+      const lastSeenRes = await ctx.hydrator.dataplane.getNotificationSeen({
+        actorDid: viewer,
+      })
+      const lastSeen = lastSeenRes.timestamp?.toDate()
+
+      const result = await fillPage({
+        cursor: params.cursor,
+        limit: params.limit,
+        fetch: ({ cursor, limit }) =>
+          listNotifications(
+            { ...params, cursor, limit, hydrateCtx, lastSeen },
+            ctx,
+          ),
+        items: (r) => r.notifications,
+      })
+      return {
+        encoding: 'application/json',
+        body: result,
+        headers: resHeaders({ labelers: hydrateCtx.labelers }),
+      }
+    },
+  })
+}
+
+const paginateNotifications = async (opts: {
+  ctx: Context
+  reasons?: string[]
+  cursor?: string
+  limit: number
+  viewer: string
+}) => {
+  const { ctx, reasons, limit, viewer } = opts
+
+  const res = await ctx.hydrator.dataplane.getNotifications({
+    actorDid: viewer,
+    cursor: opts.cursor,
+    limit,
+  })
+  return {
+    notifications: reasons
+      ? res.notifications.filter((notif) => reasons.includes(notif.reason))
+      : res.notifications,
+    cursor: res.cursor,
+  }
+}
+
+/**
+ * Applies a configurable delay to the datetime string of a cursor,
+ * effectively allowing for a delay on listing the notifications.
+ * This is useful to allow time for services to process notifications
+ * before they are listed to the user.
+ */
+export const delayCursor = (
+  cursorStr: string | undefined,
+  delayMs: number,
+): string => {
+  const nowMinusDelay = Date.now() - delayMs
+  if (cursorStr === undefined) return new Date(nowMinusDelay).toISOString()
+  const cursor = new Date(cursorStr).getTime()
+  if (isNaN(cursor)) return cursorStr
+  return new Date(Math.min(cursor, nowMinusDelay)).toISOString()
+}
+
+const skeleton = async (
+  input: SkeletonFnInput<Context, Params>,
+): Promise<SkeletonState> => {
+  const { params, ctx } = input
+  const originalCursor = params.cursor
+  const delayedCursor = delayCursor(
+    originalCursor,
+    ctx.cfg.notificationsDelayMs,
+  )
+  const viewer = params.hydrateCtx.viewer
+  const res = await paginateNotifications({
+    ctx,
+    reasons: params.reasons,
+    cursor: delayedCursor,
+    limit: params.limit,
+    viewer,
+  })
+  // @NOTE for the first page of results if there's no last-seen time, consider top notification unread
+  // rather than all notifications. bit of a hack to be more graceful when seen times are out of sync.
+  let lastSeenDate = params.lastSeen
+  if (!lastSeenDate && !originalCursor) {
+    lastSeenDate = res.notifications.at(0)?.timestamp?.toDate()
+  }
+  return {
+    notifs: res.notifications,
+    cursor: res.cursor,
+    lastSeenNotifs: lastSeenDate
+      ? (lastSeenDate.toISOString() as DatetimeString)
+      : undefined,
+  }
+}
+
+const hydration = async (
+  input: HydrationFnInput<Context, Params, SkeletonState>,
+) => {
+  const { skeleton, params, ctx } = input
+  return ctx.hydrator.hydrateNotifications(skeleton.notifs, params.hydrateCtx)
+}
+
+const noBlockOrMutesOrNeedsFiltering = (
+  input: RulesFnInput<Context, Params, SkeletonState>,
+) => {
+  const { skeleton, hydration, ctx, params } = input
+  skeleton.notifs = skeleton.notifs.filter((item) => {
+    const uri = item.uri as AtUriString
+    const did = didFromUri(uri)
+    if (
+      ctx.views.viewerBlockExists(did, hydration) ||
+      ctx.views.viewerMuteExists(did, hydration)
+    ) {
+      return false
+    }
+    // Filter out hidden replies only if the viewer owns
+    // the threadgate and they hid the reply.
+    if (item.reason === 'reply') {
+      const post = hydration.posts?.get(uri)
+      if (post) {
+        const rootPostUri = isPostRecordType(post.record)
+          ? post.record.reply?.root.uri
+          : undefined
+        const isRootPostByViewer =
+          rootPostUri && didFromUri(rootPostUri) === params.hydrateCtx?.viewer
+        const isHiddenByThreadgate = isRootPostByViewer
+          ? ctx.views.replyIsHiddenByThreadgate(uri, rootPostUri, hydration)
+          : false
+        if (isHiddenByThreadgate) {
+          return false
+        }
+      }
+    }
+    // Filter out notifications from users that have thread hide tags and are from people they
+    // are not following
+    if (
+      item.reason === 'reply' ||
+      item.reason === 'quote' ||
+      item.reason === 'mention'
+    ) {
+      const post = hydration.posts?.get(uri)
+      if (post) {
+        for (const [tag] of post.tags.entries()) {
+          if (ctx.cfg.threadTagsHide.has(tag)) {
+            if (!hydration.profileViewers?.get(did)?.following) {
+              return false
+            } else {
+              break
+            }
+          }
+        }
+      }
+    }
+    // Filter out notifications from users that need review unless moots
+    if (
+      item.reason === 'reply' ||
+      item.reason === 'quote' ||
+      item.reason === 'mention' ||
+      item.reason === 'like' ||
+      item.reason === 'follow'
+    ) {
+      if (!ctx.views.viewerSeesNeedsReview({ did, uri }, hydration)) {
+        return false
+      }
+    }
+    return true
+  })
+  return skeleton
+}
+
+const presentation = (
+  input: PresentationFnInput<Context, Params, SkeletonState>,
+): app.bsky.notification.listNotifications.$OutputBody => {
+  const { skeleton, hydration, ctx } = input
+  const { notifs, lastSeenNotifs, cursor } = skeleton
+  const notifications = mapDefined(notifs, (notif) =>
+    ctx.views.notification(notif, lastSeenNotifs, hydration),
+  )
+  return {
+    notifications,
+    cursor,
+    seenAt: skeleton.lastSeenNotifs,
+  }
+}
+
+type Context = {
+  hydrator: Hydrator
+  views: Views
+  cfg: ServerConfig
+}
+
+type Params = app.bsky.notification.listNotifications.$Params & {
+  hydrateCtx: HydrateCtxWithViewer
+  lastSeen?: Date
+}
+
+type SkeletonState = {
+  notifs: Notification[]
+  lastSeenNotifs?: DatetimeString
+  cursor?: string
+}

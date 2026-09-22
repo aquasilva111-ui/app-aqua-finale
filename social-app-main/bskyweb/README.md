@@ -1,0 +1,45 @@
+## Build / Develop
+
+### SPA Bundle (monolithic static javascript file)
+
+To build the SPA bundle (`bundle.web.js`), first get a JavaScript development
+environment set up. Either follow the top-level README, or something quick
+like:
+
+```bash
+# install nodejs
+nvm install
+nvm use
+npm install --global pnpm
+
+# setup tools and deps (in top level of this repo)
+pnpm install --frozen-lockfile
+
+# run pnpm web dev server, if you wanted
+pnpm web
+```
+
+Then build and copy over the big 'ol `bundle.web.js` file:
+
+
+```bash
+# in the top level of this repo
+pnpm build-web
+```
+
+### Golang Daemon
+
+Install golang. We generally develop against the current stable release of the language, as declared in `go.mod`.
+
+In this directory (`bskyweb/`):
+
+```bash
+# re-build and run daemon
+go run ./cmd/bskyweb serve
+
+# build and output a binary
+go build -o bskyweb ./cmd/bskyweb/
+```
+
+The easiest way to configure the daemon is to copy `example.env` to `.env` and
+fill in auth values there.
