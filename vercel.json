@@ -1,7 +1,7 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "installCommand": "cd social-app-main && pnpm install --frozen-lockfile",
-  "buildCommand": "cd social-app-main && NODE_OPTIONS=--max-old-space-size=6144 pnpm build-web",
+  "buildCommand": "cd social-app-main && pnpm intl:build && NODE_OPTIONS=--max-old-space-size=6144 pnpm build-web",
   "outputDirectory": "social-app-main/dist",
   "rewrites": [
     {
