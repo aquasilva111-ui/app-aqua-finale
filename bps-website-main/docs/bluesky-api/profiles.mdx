@@ -1,0 +1,150 @@
+---
+sidebar_label: Profiles
+---
+
+import Tabs from '@theme/Tabs';
+import TabItem from '@theme/TabItem';
+
+# Profiles
+
+A profile is made up of a user's biographical information — display name, avatar, banner, and bio — along with their posts. This guide covers reading any user's profile and editing your own.
+
+## Viewing a profile
+
+:::info
+To learn how to fetch a user's posts, see the [Viewing
+feeds](/docs/bluesky-api/viewing-feeds#author-feeds) tutorial under "Author
+feeds."
+:::
+
+### Fetching a user's profile info
+
+<Tabs groupId="sdk">
+  <TabItem value="ts" label="TypeScript">
+    To fetch a user's profile info, you can call the `app.bsky.actor.getProfile` endpoint.
+
+    ```typescript title="app.bsky.actor.getProfile"
+    import { app } from '@bsky/sdk/lexicons'
+
+    const { did, displayName } = await client.call(app.bsky.actor.getProfile, {
+      actor: 'did:plc:...',
+    })
+    ```
+  </TabItem>
+  <TabItem value="python" label="Python">
+    To fetch a user's profile info, you can use the `get_profile` method.
+
+    ```python title="client.get_profile"
+    data = client.get_profile(actor='did:plc:...')
+    did = data.did
+    display_name = data.display_name
+    ```
+  </TabItem>
+  <TabItem value="go" label="Go">
+    Use `ActorGetProfile` with a handle or DID.
+
+    ```go title="ActorGetProfile"
+    profile, _ := appbsky.ActorGetProfile(ctx, client, "did:plc:...")
+    did := profile.Did
+    displayName := profile.DisplayName // *string
+    ```
+  </TabItem>
+</Tabs>
+
+| Parameter | Type     | Description                                           | Required |
+| --------- | -------- | ----------------------------------------------------- | -------- |
+| `actor`   | `string` | The DID (or handle) of the user whose profile you'd like to fetch | Yes      |
+
+### Fetching multiple profiles at once
+
+Fetching multiple profiles is as easy as fetching a single profile:
+
+<Tabs groupId="sdk">
+  <TabItem value="ts" label="TypeScript">
+    ```typescript title="app.bsky.actor.getProfiles"
+    const { profiles } = await client.call(app.bsky.actor.getProfiles, {
+      actors: ['did:plc:...'],
+    })
+    ```
+  </TabItem>
+  <TabItem value="python" label="Python">
+    ```python title="client.get_profiles"
+    data = client.get_profiles(actors=['did:plc:...', ...])
+    profiles = data.profiles
+    ```
+  </TabItem>
+  <TabItem value="go" label="Go">
+    ```go title="ActorGetProfiles"
+    resp, _ := appbsky.ActorGetProfiles(ctx, client, []string{"did:plc:...", "..."})
+    profiles := resp.Profiles
+    ```
+  </TabItem>
+</Tabs>
+
+| Parameter | Type     | Description                                           | Required |
+| --------- | -------- | ----------------------------------------------------- | -------- |
+| `actors`   | `string[]` | The DIDs (or handles) of the users whose profiles you'd like to fetch | Yes      |
+
+## Editing a profile
+
+An authenticated user can edit their profile, including updating their display
+name, avatar, banner image, and bio.
+
+Editing a profile works as an "upsert" operation. If the profile does not exist,
+such as immediately after account creation, the profile will be created. And if
+the profile already exists, you must merge in new values manually and return
+result to be updated.
+
+:::note
+The TypeScript SDK provides a convenient `upsertProfile` action, shown below.
+Where an SDK doesn't have an equivalent, edit your profile directly: read
+the `app.bsky.actor.profile` record at rkey `self`, change the fields you want,
+and write it back with a put-record call (in Go, build an `appbsky.ActorProfile`
+and submit it with `comatproto.RepoPutRecord`).
+:::
+
+<Tabs groupId="sdk">
+  <TabItem value="ts" label="TypeScript">
+    ```typescript title="upsertProfile"
+    import { upsertProfile } from '@bsky/sdk'
+
+    await client.call(upsertProfile, existing => ({
+      ...existing,
+      displayName: 'New display name who dis',
+      description: 'New bio who dis',
+    }))
+    ```
+  </TabItem>
+</Tabs>
+
+:::tip
+Only accounts with a valid profile are indexed for search. When creating a new
+account, we recommend creating a minimal profile with `displayName` set to the
+user's handle.
+:::
+
+### Updating profile avatar or banner
+
+Images are handled as separate records by Bluesky, so adding or updating an
+avatar or profile banner requires an additional step of uploading the image blob
+to your PDS.
+
+<Tabs groupId="sdk">
+  <TabItem value="ts" label="TypeScript">
+    ```typescript title="upsertProfile"
+    const avatar = 'data:image/png;base64,...'
+
+    await client.call(upsertProfile, async existing => {
+      const { body } = await client.uploadBlob(convertDataURIToUint8Array(avatar), {
+        encoding: 'image/png',
+      })
+
+      return { ...existing, avatar: body.blob }
+    })
+    ```
+  </TabItem>
+</Tabs>
+
+---
+
+<span class="docsFooterNote">Looking for more? Browse additional tutorials and guides on [atproto.com](https://atproto.com/guides/tutorials).</span>

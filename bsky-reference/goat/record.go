@@ -1,0 +1,355 @@
+package main
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"io"
+	"net/http"
+	"os"
+	"time"
+
+	"github.com/bluesky-social/indigo/api/agnostic"
+	comatproto "github.com/bluesky-social/indigo/api/atproto"
+	"github.com/bluesky-social/indigo/atproto/atclient"
+	"github.com/bluesky-social/indigo/atproto/atdata"
+	"github.com/bluesky-social/indigo/atproto/syntax"
+	"github.com/bluesky-social/indigo/util/ssrf"
+
+	"github.com/urfave/cli/v3"
+)
+
+var cmdRecord = &cli.Command{
+	Name:  "record",
+	Usage: "commands for public repo records",
+	Flags: []cli.Flag{},
+	Commands: []*cli.Command{
+		cmdRecordGet,
+		cmdRecordList,
+		&cli.Command{
+			Name:      "create",
+			Usage:     "create record from JSON",
+			ArgsUsage: `<file|->`,
+			Flags: []cli.Flag{
+				&cli.StringFlag{
+					Name:    "rkey",
+					Aliases: []string{"r"},
+					Usage:   "record key",
+				},
+				&cli.BoolFlag{
+					Name:    "no-validate",
+					Aliases: []string{"n"},
+					Usage:   "tells PDS not to validate record Lexicon schema",
+				},
+			},
+			Action: runRecordCreate,
+		},
+		&cli.Command{
+			Name:      "update",
+			Usage:     "replace existing record from JSON",
+			ArgsUsage: `<file>`,
+			Flags: []cli.Flag{
+				&cli.StringFlag{
+					Name:     "rkey",
+					Aliases:  []string{"r"},
+					Required: true,
+					Usage:    "record key",
+				},
+				&cli.BoolFlag{
+					Name:    "no-validate",
+					Aliases: []string{"n"},
+					Usage:   "tells PDS not to validate record Lexicon schema",
+				},
+			},
+			Action: runRecordUpdate,
+		},
+		&cli.Command{
+			Name:  "delete",
+			Usage: "delete an existing record",
+			Flags: []cli.Flag{
+				&cli.StringFlag{
+					Name:     "collection",
+					Aliases:  []string{"c"},
+					Required: true,
+					Usage:    "collection (NSID)",
+				},
+				&cli.StringFlag{
+					Name:     "rkey",
+					Aliases:  []string{"r"},
+					Required: true,
+					Usage:    "record key",
+				},
+			},
+			Action: runRecordDelete,
+		},
+	},
+}
+
+var cmdRecordGet = &cli.Command{
+	Name:      "get",
+	Usage:     "fetch record from the network",
+	ArgsUsage: `<at-uri>`,
+	Flags:     []cli.Flag{},
+	Action:    runRecordGet,
+}
+
+var cmdRecordList = &cli.Command{
+	Name:      "ls",
+	Aliases:   []string{"list"},
+	Usage:     "list all records for an account",
+	ArgsUsage: `<at-identifier>`,
+	Flags: []cli.Flag{
+		&cli.StringFlag{
+			Name:  "collection",
+			Usage: "only list records from a specific collection",
+		},
+		&cli.BoolFlag{
+			Name:    "collections",
+			Aliases: []string{"c"},
+			Usage:   "list collections, not individual record paths",
+		},
+	},
+	Action: runRecordList,
+}
+
+func runRecordGet(ctx context.Context, cmd *cli.Command) error {
+	dir := configDirectory(cmd.String("plc-host"))
+
+	uriArg := cmd.Args().First()
+	if uriArg == "" {
+		return fmt.Errorf("expected a single AT-URI argument")
+	}
+
+	aturi, err := syntax.ParseATURI(uriArg)
+	if err != nil {
+		return fmt.Errorf("not a valid AT-URI: %v", err)
+	}
+	ident, err := dir.Lookup(ctx, aturi.Authority())
+	if err != nil {
+		return err
+	}
+
+	record, err := fetchRecord(ctx, *ident, aturi)
+	if err != nil {
+		return err
+	}
+
+	b, err := json.MarshalIndent(record, "", "  ")
+	if err != nil {
+		return err
+	}
+
+	fmt.Println(string(b))
+	return nil
+}
+
+func runRecordList(ctx context.Context, cmd *cli.Command) error {
+	username := cmd.Args().First()
+	if username == "" {
+		return fmt.Errorf("need to provide username as an argument")
+	}
+	ident, err := resolveIdent(ctx, cmd, username)
+	if err != nil {
+		return err
+	}
+
+	// create a new API client to connect to the account's PDS
+	c := atclient.NewAPIClient(ident.PDSEndpoint())
+	c.Client = &http.Client{
+		Timeout:   20 * time.Second,
+		Transport: ssrf.PublicOnlyTransport(),
+	}
+	c.Headers.Set("User-Agent", userAgentString())
+	if c.Host == "" {
+		return fmt.Errorf("no PDS endpoint for identity")
+	}
+
+	desc, err := comatproto.RepoDescribeRepo(ctx, c, ident.DID.String())
+	if err != nil {
+		return err
+	}
+	if cmd.Bool("collections") {
+		for _, nsid := range desc.Collections {
+			fmt.Printf("%s\n", nsid)
+		}
+		return nil
+	}
+	collections := desc.Collections
+	filter := cmd.String("collection")
+	if filter != "" {
+		collections = []string{filter}
+	}
+
+	for _, nsid := range collections {
+		cursor := ""
+		for {
+			// collection string, cursor string, limit int64, repo string, reverse bool
+			resp, err := agnostic.RepoListRecords(ctx, c, nsid, cursor, 100, ident.DID.String(), false)
+			if err != nil {
+				return err
+			}
+			for _, rec := range resp.Records {
+				aturi, err := syntax.ParseATURI(rec.Uri)
+				if err != nil {
+					return err
+				}
+				fmt.Printf("%s\t%s\t%s\n", aturi.Collection(), aturi.RecordKey(), rec.Cid)
+			}
+			if resp.Cursor != nil && *resp.Cursor != "" {
+				cursor = *resp.Cursor
+			} else {
+				break
+			}
+		}
+	}
+
+	return nil
+}
+
+func runRecordCreate(ctx context.Context, cmd *cli.Command) error {
+	recordPath := cmd.Args().First()
+	if recordPath == "" {
+		return fmt.Errorf("need to provide file path or '-' for stdin as an argument")
+	}
+
+	client, err := loadAuthClient(ctx, cmd)
+	if err == ErrNoAuthSession {
+		return fmt.Errorf("auth required, but not logged in")
+	} else if err != nil {
+		return err
+	}
+
+	inputReader, err := getFileOrStdin(recordPath)
+	if err != nil {
+		return err
+	}
+
+	recordBytes, err := io.ReadAll(inputReader)
+	if err != nil {
+		return err
+	}
+
+	recordVal, err := atdata.UnmarshalJSON(recordBytes)
+	if err != nil {
+		return err
+	}
+
+	nsid, err := atdata.ExtractTypeJSON(recordBytes)
+	if err != nil {
+		return fmt.Errorf("failed to extract '$type' from record data: %w", err)
+	}
+	if nsid == "" {
+		return fmt.Errorf("failed to parse '$type' from record data: empty or undefined")
+	}
+
+	var rkey *string
+	if cmd.String("rkey") != "" {
+		rk, err := syntax.ParseRecordKey(cmd.String("rkey"))
+		if err != nil {
+			return err
+		}
+		s := rk.String()
+		rkey = &s
+	}
+	validate := !cmd.Bool("no-validate")
+
+	resp, err := agnostic.RepoCreateRecord(ctx, client, &agnostic.RepoCreateRecord_Input{
+		Collection: nsid,
+		Repo:       client.AccountDID.String(),
+		Record:     recordVal,
+		Rkey:       rkey,
+		Validate:   &validate,
+	})
+	if err != nil {
+		return err
+	}
+
+	fmt.Printf("%s\t%s\n", resp.Uri, resp.Cid)
+	return nil
+}
+
+func runRecordUpdate(ctx context.Context, cmd *cli.Command) error {
+	recordPath := cmd.Args().First()
+	if recordPath == "" {
+		return fmt.Errorf("need to provide file path as an argument")
+	}
+
+	client, err := loadAuthClient(ctx, cmd)
+	if err == ErrNoAuthSession {
+		return fmt.Errorf("auth required, but not logged in")
+	} else if err != nil {
+		return err
+	}
+
+	recordBytes, err := os.ReadFile(recordPath)
+	if err != nil {
+		return err
+	}
+
+	recordVal, err := atdata.UnmarshalJSON(recordBytes)
+	if err != nil {
+		return err
+	}
+
+	nsid, err := atdata.ExtractTypeJSON(recordBytes)
+	if err != nil {
+		return fmt.Errorf("failed to extract '$type' from record data: %w", err)
+	}
+	if nsid == "" {
+		return fmt.Errorf("failed to parse '$type' from record data: empty or undefined")
+	}
+
+	rkey := cmd.String("rkey")
+
+	// NOTE: need to fetch existing record CID to perform swap. this is optional in theory, but golang can't deal with "optional" and "nullable", so we always need to set this (?)
+	existing, err := agnostic.RepoGetRecord(ctx, client, "", nsid, client.AccountDID.String(), rkey)
+	if err != nil {
+		return err
+	}
+
+	validate := !cmd.Bool("no-validate")
+
+	resp, err := agnostic.RepoPutRecord(ctx, client, &agnostic.RepoPutRecord_Input{
+		Collection: nsid,
+		Repo:       client.AccountDID.String(),
+		Record:     recordVal,
+		Rkey:       rkey,
+		Validate:   &validate,
+		SwapRecord: existing.Cid,
+	})
+	if err != nil {
+		return err
+	}
+
+	fmt.Printf("%s\t%s\n", resp.Uri, resp.Cid)
+	return nil
+}
+
+func runRecordDelete(ctx context.Context, cmd *cli.Command) error {
+
+	client, err := loadAuthClient(ctx, cmd)
+	if err == ErrNoAuthSession {
+		return fmt.Errorf("auth required, but not logged in")
+	} else if err != nil {
+		return err
+	}
+
+	rkey, err := syntax.ParseRecordKey(cmd.String("rkey"))
+	if err != nil {
+		return err
+	}
+	collection, err := syntax.ParseNSID(cmd.String("collection"))
+	if err != nil {
+		return err
+	}
+
+	_, err = comatproto.RepoDeleteRecord(ctx, client, &comatproto.RepoDeleteRecord_Input{
+		Collection: collection.String(),
+		Repo:       client.AccountDID.String(),
+		Rkey:       rkey.String(),
+	})
+	if err != nil {
+		return err
+	}
+	return nil
+}

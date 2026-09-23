@@ -1,0 +1,56 @@
+*.o
+*.a
+*.pyc
+#*#
+*~
+*.swp
+.*
+*.tmp
+*.old
+*.profile
+*.bkp
+*.bak
+[Tt]humbs.db
+*.DS_Store
+build/
+_build/
+src/build/
+*.log
+*.db
+*.db-shm
+*.db-wal
+/data/
+test-coverage.out
+
+# executables
+/beemo
+/bluepages
+/fakermaker
+/gosky
+/hepa
+/lexgen
+/palomar
+/rainbow
+/relay
+/sonar
+/sonar-cli
+/stress
+/tap
+
+# Don't ignore this file itself, or other specific dotfiles
+!.gitignore
+!.github/
+!.golangci.yaml
+
+# Don't commit your (default location) creds
+bsky.auth
+
+# Sonar cursor file
+sonar_cursor.json
+out/
+state.json
+netsync-out/
+
+# Relay dash output
+/public/
+/cmd/relay/public

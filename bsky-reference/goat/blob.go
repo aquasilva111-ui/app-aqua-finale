@@ -1,0 +1,289 @@
+package main
+
+import (
+	"bytes"
+	"context"
+	"encoding/json"
+	"fmt"
+	"net/http"
+	"os"
+	"time"
+
+	comatproto "github.com/bluesky-social/indigo/api/atproto"
+	"github.com/bluesky-social/indigo/atproto/atclient"
+	"github.com/bluesky-social/indigo/atproto/atdata"
+	"github.com/bluesky-social/indigo/util/ssrf"
+
+	"github.com/urfave/cli/v3"
+)
+
+var cmdBlob = &cli.Command{
+	Name:  "blob",
+	Usage: "commands for media files (blobs)",
+	Flags: []cli.Flag{},
+	Commands: []*cli.Command{
+		&cli.Command{
+			Name:      "export",
+			Usage:     "download all public blobs for indicated account",
+			ArgsUsage: `<at-identifier>`,
+			Flags: []cli.Flag{
+				&cli.StringFlag{
+					Name:    "output",
+					Aliases: []string{"o"},
+					Usage:   "directory to store blobs in",
+				},
+				&cli.StringFlag{
+					Name:  "pds-host",
+					Usage: "URL of the PDS to export blobs from (overrides DID doc)",
+				},
+			},
+			Action: runBlobExport,
+		},
+		&cli.Command{
+			Name:      "ls",
+			Aliases:   []string{"list"},
+			Usage:     "list all public blobs for indicated account",
+			ArgsUsage: `<at-identifier>`,
+			Flags:     []cli.Flag{},
+			Action:    runBlobList,
+		},
+		&cli.Command{
+			Name:      "download",
+			Usage:     "download a single blob from an account",
+			ArgsUsage: `<at-identifier> <cid>`,
+			Flags: []cli.Flag{
+				&cli.StringFlag{
+					Name:    "output",
+					Aliases: []string{"o"},
+					Usage:   "file path to store blob at",
+				},
+				&cli.StringFlag{
+					Name:  "pds-host",
+					Usage: "URL of the PDS to download blob from (overrides DID doc)",
+				},
+			},
+			Action: runBlobDownload,
+		},
+		&cli.Command{
+			Name:      "upload",
+			Usage:     "upload a file (blob) to PDS",
+			ArgsUsage: `<file>`,
+			Flags:     []cli.Flag{},
+			Action:    runBlobUpload,
+		},
+		&cli.Command{
+			Name:      "compute",
+			Usage:     "hash a local file and print blob metadata",
+			ArgsUsage: `<file>`,
+			Flags:     []cli.Flag{},
+			Action:    runBlobCompute,
+		},
+	},
+}
+
+func runBlobExport(ctx context.Context, cmd *cli.Command) error {
+	username := cmd.Args().First()
+	if username == "" {
+		return fmt.Errorf("need to provide username as an argument")
+	}
+	ident, err := resolveIdent(ctx, cmd, username)
+	if err != nil {
+		return err
+	}
+
+	pdsHost := cmd.String("pds-host")
+	if pdsHost == "" {
+		pdsHost = ident.PDSEndpoint()
+	}
+	if pdsHost == "" {
+		return fmt.Errorf("no PDS endpoint for identity")
+	}
+
+	// create a new API client to connect to the account's PDS
+	client := atclient.NewAPIClient(pdsHost)
+	client.Client = &http.Client{
+		Timeout:   20 * time.Second,
+		Transport: ssrf.PublicOnlyTransport(),
+	}
+	client.Headers.Set("User-Agent", userAgentString())
+
+	topDir := cmd.String("output")
+	if topDir == "" {
+		topDir = fmt.Sprintf("%s_blobs", username)
+	}
+
+	fmt.Printf("downloading blobs to: %s\n", topDir)
+	os.MkdirAll(topDir, os.ModePerm)
+
+	cursor := ""
+	for {
+		resp, err := comatproto.SyncListBlobs(ctx, client, cursor, ident.DID.String(), 500, "")
+		if err != nil {
+			return err
+		}
+		for _, cidStr := range resp.Cids {
+			blobPath := topDir + "/" + cidStr
+			if _, err := os.Stat(blobPath); err == nil {
+				fmt.Printf("%s\texists\n", blobPath)
+				continue
+			}
+			blobBytes, err := comatproto.SyncGetBlob(ctx, client, cidStr, ident.DID.String())
+			if err != nil {
+				fmt.Printf("%s\tfailed %s\n", blobPath, err)
+				continue
+			}
+			if err := os.WriteFile(blobPath, blobBytes, 0666); err != nil {
+				return err
+			}
+			fmt.Printf("%s\tdownloaded\n", blobPath)
+		}
+		if resp.Cursor != nil && *resp.Cursor != "" {
+			cursor = *resp.Cursor
+		} else {
+			break
+		}
+	}
+	return nil
+}
+
+func runBlobList(ctx context.Context, cmd *cli.Command) error {
+	username := cmd.Args().First()
+	if username == "" {
+		return fmt.Errorf("need to provide username as an argument")
+	}
+	ident, err := resolveIdent(ctx, cmd, username)
+	if err != nil {
+		return err
+	}
+
+	// create a new API client to connect to the account's PDS
+	client := atclient.NewAPIClient(ident.PDSEndpoint())
+	client.Client = &http.Client{
+		Timeout:   20 * time.Second,
+		Transport: ssrf.PublicOnlyTransport(),
+	}
+	client.Headers.Set("User-Agent", userAgentString())
+
+	cursor := ""
+	for {
+		resp, err := comatproto.SyncListBlobs(ctx, client, cursor, ident.DID.String(), 500, "")
+		if err != nil {
+			return err
+		}
+		for _, cidStr := range resp.Cids {
+			fmt.Println(cidStr)
+		}
+		if resp.Cursor != nil && *resp.Cursor != "" {
+			cursor = *resp.Cursor
+		} else {
+			break
+		}
+	}
+	return nil
+}
+
+func runBlobDownload(ctx context.Context, cmd *cli.Command) error {
+	username := cmd.Args().First()
+	if username == "" {
+		return fmt.Errorf("need to provide username as an argument")
+	}
+	if cmd.Args().Len() < 2 {
+		return fmt.Errorf("need to provide blob CID as second argument")
+	}
+	blobCID := cmd.Args().Get(1)
+	ident, err := resolveIdent(ctx, cmd, username)
+	if err != nil {
+		return err
+	}
+
+	pdsHost := cmd.String("pds-host")
+	if pdsHost == "" {
+		pdsHost = ident.PDSEndpoint()
+	}
+
+	// create a new API client to connect to the account's PDS
+	client := atclient.NewAPIClient(pdsHost)
+	client.Client = &http.Client{
+		Timeout:   20 * time.Second,
+		Transport: ssrf.PublicOnlyTransport(),
+	}
+	client.Headers.Set("User-Agent", userAgentString())
+
+	blobPath := cmd.String("output")
+	if blobPath == "" {
+		blobPath = blobCID
+	}
+
+	fmt.Printf("downloading blob to: %s\n", blobCID)
+
+	if _, err := os.Stat(blobPath); err == nil {
+		return fmt.Errorf("file exists: %s", blobPath)
+	}
+	blobBytes, err := comatproto.SyncGetBlob(ctx, client, blobCID, ident.DID.String())
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(blobPath, blobBytes, 0666)
+}
+
+func runBlobUpload(ctx context.Context, cmd *cli.Command) error {
+	blobPath := cmd.Args().First()
+	if blobPath == "" {
+		return fmt.Errorf("need to provide file path as an argument")
+	}
+
+	client, err := loadAuthClient(ctx, cmd)
+	if err == ErrNoAuthSession {
+		return fmt.Errorf("auth required, but not logged in")
+	} else if err != nil {
+		return err
+	}
+
+	fileBytes, err := os.ReadFile(blobPath)
+	if err != nil {
+		return err
+	}
+
+	resp, err := comatproto.RepoUploadBlob(ctx, client, bytes.NewReader(fileBytes))
+	if err != nil {
+		return err
+	}
+
+	b, err := json.MarshalIndent(resp.Blob, "", "  ")
+	if err != nil {
+		return err
+	}
+
+	fmt.Println(string(b))
+	return nil
+}
+
+func runBlobCompute(ctx context.Context, cmd *cli.Command) error {
+	blobPath := cmd.Args().First()
+	if blobPath == "" {
+		return fmt.Errorf("need to provide file path as an argument")
+	}
+	fileBytes, err := os.ReadFile(blobPath)
+	if err != nil {
+		return err
+	}
+
+	cid, err := computeRawCID(fileBytes)
+	if err != nil {
+		return err
+	}
+
+	blob := atdata.Blob{
+		Ref:      atdata.CIDLink(*cid),
+		Size:     int64(len(fileBytes)),
+		MimeType: "application/octet-stream", // TODO
+	}
+
+	b, err := json.MarshalIndent(blob, "", "  ")
+	if err != nil {
+		return err
+	}
+
+	fmt.Println(string(b))
+	return nil
+}

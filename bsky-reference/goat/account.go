@@ -1,0 +1,553 @@
+package main
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"net/http"
+	"strings"
+	"time"
+
+	comatproto "github.com/bluesky-social/indigo/api/atproto"
+	"github.com/bluesky-social/indigo/atproto/atclient"
+	"github.com/bluesky-social/indigo/atproto/atcrypto"
+	"github.com/bluesky-social/indigo/atproto/auth"
+	"github.com/bluesky-social/indigo/atproto/syntax"
+	"github.com/bluesky-social/indigo/util/ssrf"
+
+	"github.com/urfave/cli/v3"
+)
+
+var cmdAccount = &cli.Command{
+	Name:  "account",
+	Usage: "commands for auth session and account management",
+	Flags: []cli.Flag{},
+	Commands: []*cli.Command{
+		&cli.Command{
+			Name:  "login",
+			Usage: "create session with PDS instance",
+			Flags: []cli.Flag{
+				&cli.StringFlag{
+					Name:     "username",
+					Aliases:  []string{"u"},
+					Required: true,
+					Usage:    "account identifier (handle or DID)",
+					Sources:  cli.EnvVars("GOAT_USERNAME", "ATP_USERNAME", "ATP_AUTH_USERNAME"),
+				},
+				&cli.StringFlag{
+					Name:     "password",
+					Aliases:  []string{"p", "app-password"},
+					Required: true,
+					Usage:    "password (app password recommended)",
+					Sources:  cli.EnvVars("GOAT_PASSWORD", "ATP_PASSWORD", "ATP_AUTH_PASSWORD"),
+				},
+				&cli.StringFlag{
+					Name:    "auth-factor-token",
+					Usage:   "token required if password is used and 2fa is required",
+					Sources: cli.EnvVars("ATP_AUTH_FACTOR_TOKEN"),
+				},
+				&cli.StringFlag{
+					Name:    "pds-host",
+					Usage:   "URL of the PDS to create account on (overrides DID doc)",
+					Sources: cli.EnvVars("ATP_PDS_HOST"),
+				},
+			},
+			Action: runAccountLogin,
+		},
+		&cli.Command{
+			Name:   "logout",
+			Usage:  "delete any current session",
+			Action: runAccountLogout,
+		},
+		&cli.Command{
+			Name:   "activate",
+			Usage:  "(re)activate current account",
+			Action: runAccountActivate,
+		},
+		&cli.Command{
+			Name:   "deactivate",
+			Usage:  "deactivate current account",
+			Action: runAccountDeactivate,
+		},
+		&cli.Command{
+			Name:      "status",
+			Usage:     "show basic account hosting status for any account",
+			ArgsUsage: `<at-identifier>`,
+			Action:    runAccountStatus,
+		},
+		&cli.Command{
+			Name:      "update-handle",
+			Usage:     "change handle for current account",
+			ArgsUsage: `<handle>`,
+			Action:    runAccountUpdateHandle,
+		},
+		&cli.Command{
+			Name:   "check-auth",
+			Usage:  "check session auth and current account status",
+			Action: runAccountCheckAuth,
+		},
+		&cli.Command{
+			Name:   "missing-blobs",
+			Usage:  "list any missing blobs for current account",
+			Action: runAccountMissingBlobs,
+		},
+		&cli.Command{
+			Name:  "service-auth",
+			Usage: "ask the PDS to create a service auth token",
+			Flags: []cli.Flag{
+				&cli.StringFlag{
+					Name:    "endpoint",
+					Aliases: []string{"lxm"},
+					Usage:   "restrict token to API endpoint (NSID, optional)",
+				},
+				&cli.StringFlag{
+					Name:     "audience",
+					Aliases:  []string{"aud"},
+					Required: true,
+					Usage:    "DID of service that will receive and validate token",
+				},
+				&cli.IntFlag{
+					Name:  "duration-sec",
+					Value: 60,
+					Usage: "validity time window of token (seconds)",
+				},
+			},
+			Action: runAccountServiceAuth,
+		},
+		&cli.Command{
+			Name:  "service-auth-offline",
+			Usage: "create service auth token via locally-held signing key",
+			Flags: []cli.Flag{
+				&cli.StringFlag{
+					Name:     "atproto-signing-key",
+					Required: true,
+					Usage:    "private key used to sign the token (multibase syntax)",
+					Sources:  cli.EnvVars("ATPROTO_SIGNING_KEY"),
+				},
+				&cli.StringFlag{
+					Name:     "iss",
+					Required: true,
+					Usage:    "the DID of the account issuing the token",
+				},
+				&cli.StringFlag{
+					Name:    "endpoint",
+					Aliases: []string{"lxm"},
+					Usage:   "restrict token to API endpoint (NSID, optional)",
+				},
+				&cli.StringFlag{
+					Name:     "audience",
+					Aliases:  []string{"aud"},
+					Required: true,
+					Usage:    "DID of service that will receive and validate token",
+				},
+				&cli.IntFlag{
+					Name:  "duration-sec",
+					Value: 60,
+					Usage: "validity time window of token (seconds)",
+				},
+			},
+			Action: runAccountServiceAuthOffline,
+		},
+		&cli.Command{
+			Name:  "create",
+			Usage: "create a new account on the indicated PDS host",
+			Flags: []cli.Flag{
+				&cli.StringFlag{
+					Name:     "pds-host",
+					Usage:    "URL of the PDS to create account on",
+					Required: true,
+					Sources:  cli.EnvVars("ATP_PDS_HOST"),
+				},
+				&cli.StringFlag{
+					Name:     "handle",
+					Usage:    "handle for new account",
+					Required: true,
+					Sources:  cli.EnvVars("NEW_ACCOUNT_HANDLE"),
+				},
+				&cli.StringFlag{
+					Name:     "password",
+					Usage:    "initial account password",
+					Required: true,
+					Sources:  cli.EnvVars("NEW_ACCOUNT_PASSWORD"),
+				},
+				&cli.StringFlag{
+					Name:     "email",
+					Usage:    "email address for new account",
+					Required: true,
+					Sources:  cli.EnvVars("NEW_ACCOUNT_EMAIL"),
+				},
+				&cli.StringFlag{
+					Name:  "invite-code",
+					Usage: "invite code for account signup",
+				},
+				&cli.StringFlag{
+					Name:  "existing-did",
+					Usage: "an existing DID to use (eg, non-PLC DID, or migration)",
+				},
+				&cli.StringFlag{
+					Name:  "recovery-key",
+					Usage: "public cryptographic key (did:key) to add as PLC recovery",
+				},
+				&cli.StringFlag{
+					Name:  "service-auth",
+					Usage: "service auth token (for account migration)",
+				},
+			},
+			Action: runAccountCreate,
+		},
+		cmdAccountMigrate,
+		cmdAccountPlc,
+	},
+}
+
+func runAccountLogin(ctx context.Context, cmd *cli.Command) error {
+
+	var client *atclient.APIClient
+	var err error
+	var username syntax.AtIdentifier
+
+	pdsHost := cmd.String("pds-host")
+	if pdsHost != "" {
+		client, err = atclient.LoginWithPasswordHost(ctx, pdsHost, cmd.String("username"), cmd.String("password"), cmd.String("auth-factor-token"), authRefreshCallback)
+	} else {
+		username, err = syntax.ParseAtIdentifier(cmd.String("username"))
+		if err != nil {
+			return err
+		}
+		dir := configDirectory(cmd.String("plc-host"))
+		client, err = atclient.LoginWithPassword(ctx, dir, username, cmd.String("password"), cmd.String("auth-factor-token"), authRefreshCallback)
+	}
+	if err != nil {
+		return err
+	}
+
+	passAuth, ok := client.Auth.(*atclient.PasswordAuth)
+	if !ok {
+		return fmt.Errorf("expected password auth")
+	}
+
+	sess := AuthSession{
+		DID:          passAuth.Session.AccountDID,
+		PDS:          passAuth.Session.Host,
+		Password:     cmd.String("password"),
+		AccessToken:  passAuth.Session.AccessToken,
+		RefreshToken: passAuth.Session.RefreshToken,
+	}
+	return persistAuthSession(&sess)
+}
+
+func runAccountLogout(ctx context.Context, cmd *cli.Command) error {
+	return wipeAuthSession()
+}
+
+func runAccountStatus(ctx context.Context, cmd *cli.Command) error {
+	username := cmd.Args().First()
+	if username == "" {
+		return fmt.Errorf("need to provide username as an argument")
+	}
+	ident, err := resolveIdent(ctx, cmd, username)
+	if err != nil {
+		return err
+	}
+
+	// create a new API client to connect to the account's PDS
+	client := atclient.NewAPIClient(ident.PDSEndpoint())
+	client.Client = &http.Client{
+		Timeout:   20 * time.Second,
+		Transport: ssrf.PublicOnlyTransport(),
+	}
+	client.Headers.Set("User-Agent", userAgentString())
+	if client.Host == "" {
+		return fmt.Errorf("no PDS endpoint for identity")
+	}
+
+	status, err := comatproto.SyncGetRepoStatus(ctx, client, ident.DID.String())
+	if err != nil {
+		return err
+	}
+
+	fmt.Printf("DID: %s\n", status.Did)
+	fmt.Printf("Active: %v\n", status.Active)
+	if status.Status != nil {
+		fmt.Printf("Status: %s\n", *status.Status)
+	}
+	if status.Rev != nil {
+		fmt.Printf("Repo Rev: %s\n", *status.Rev)
+	}
+	return nil
+}
+
+func runAccountCheckAuth(ctx context.Context, cmd *cli.Command) error {
+
+	client, err := loadAuthClient(ctx, cmd)
+	if err == ErrNoAuthSession {
+		return fmt.Errorf("auth required, but not logged in")
+	} else if err != nil {
+		return err
+	}
+
+	status, err := comatproto.ServerCheckAccountStatus(ctx, client)
+	if err != nil {
+		return fmt.Errorf("failed checking account status: %w", err)
+	}
+
+	b, err := json.MarshalIndent(status, "", "  ")
+	if err != nil {
+		return err
+	}
+	fmt.Printf("DID: %s\n", client.AccountDID)
+	fmt.Printf("Host: %s\n", client.Host)
+	fmt.Println(string(b))
+
+	return nil
+}
+
+func runAccountMissingBlobs(ctx context.Context, cmd *cli.Command) error {
+
+	client, err := loadAuthClient(ctx, cmd)
+	if err == ErrNoAuthSession {
+		return fmt.Errorf("auth required, but not logged in")
+	} else if err != nil {
+		return err
+	}
+
+	cursor := ""
+	for {
+		resp, err := comatproto.RepoListMissingBlobs(ctx, client, cursor, 500)
+		if err != nil {
+			return err
+		}
+		for _, missing := range resp.Blobs {
+			fmt.Printf("%s\t%s\n", missing.Cid, missing.RecordUri)
+		}
+		if resp.Cursor != nil && *resp.Cursor != "" {
+			cursor = *resp.Cursor
+		} else {
+			break
+		}
+	}
+	return nil
+}
+
+func runAccountActivate(ctx context.Context, cmd *cli.Command) error {
+
+	client, err := loadAuthClient(ctx, cmd)
+	if err == ErrNoAuthSession {
+		return fmt.Errorf("auth required, but not logged in")
+	} else if err != nil {
+		return err
+	}
+
+	err = comatproto.ServerActivateAccount(ctx, client)
+	if err != nil {
+		return fmt.Errorf("failed activating account: %w", err)
+	}
+
+	return nil
+}
+
+func runAccountDeactivate(ctx context.Context, cmd *cli.Command) error {
+
+	client, err := loadAuthClient(ctx, cmd)
+	if err == ErrNoAuthSession {
+		return fmt.Errorf("auth required, but not logged in")
+	} else if err != nil {
+		return err
+	}
+
+	err = comatproto.ServerDeactivateAccount(ctx, client, &comatproto.ServerDeactivateAccount_Input{})
+	if err != nil {
+		return fmt.Errorf("failed deactivating account: %w", err)
+	}
+
+	return nil
+}
+
+func runAccountUpdateHandle(ctx context.Context, cmd *cli.Command) error {
+
+	raw := cmd.Args().First()
+	if raw == "" {
+		return fmt.Errorf("need to provide new handle as argument")
+	}
+	handle, err := syntax.ParseHandle(raw)
+	if err != nil {
+		return err
+	}
+
+	client, err := loadAuthClient(ctx, cmd)
+	if err == ErrNoAuthSession {
+		return fmt.Errorf("auth required, but not logged in")
+	} else if err != nil {
+		return err
+	}
+
+	err = comatproto.IdentityUpdateHandle(ctx, client, &comatproto.IdentityUpdateHandle_Input{
+		Handle: handle.String(),
+	})
+	if err != nil {
+		return fmt.Errorf("failed updating handle: %w", err)
+	}
+
+	return nil
+}
+
+func runAccountServiceAuth(ctx context.Context, cmd *cli.Command) error {
+
+	client, err := loadAuthClient(ctx, cmd)
+	if err == ErrNoAuthSession {
+		return fmt.Errorf("auth required, but not logged in")
+	} else if err != nil {
+		return err
+	}
+
+	lxm := cmd.String("endpoint")
+	if lxm != "" {
+		_, err := syntax.ParseNSID(lxm)
+		if err != nil {
+			return fmt.Errorf("lxm argument must be a valid NSID: %w", err)
+		}
+	}
+
+	aud := cmd.String("audience")
+	// TODO: can aud DID have a fragment?
+	_, err = syntax.ParseDID(aud)
+	if err != nil {
+		return fmt.Errorf("aud argument must be a valid DID: %w", err)
+	}
+
+	durSec := cmd.Int("duration-sec")
+	expTimestamp := time.Now().Unix() + int64(durSec)
+
+	resp, err := comatproto.ServerGetServiceAuth(ctx, client, aud, expTimestamp, lxm)
+	if err != nil {
+		return fmt.Errorf("failed updating handle: %w", err)
+	}
+
+	fmt.Println(resp.Token)
+
+	return nil
+}
+
+func runAccountServiceAuthOffline(ctx context.Context, cmd *cli.Command) error {
+	privStr := cmd.String("atproto-signing-key")
+	if privStr == "" {
+		return fmt.Errorf("private key must be provided")
+	}
+	privkey, err := atcrypto.ParsePrivateMultibase(privStr)
+	if err != nil {
+		return fmt.Errorf("failed parsing private key: %w", err)
+	}
+
+	issString := cmd.String("iss")
+	// TODO: support fragment identifiers
+	iss, err := syntax.ParseDID(issString)
+	if err != nil {
+		return fmt.Errorf("iss argument must be a valid DID: %w", err)
+	}
+
+	lxmString := cmd.String("endpoint")
+	var lxm *syntax.NSID = nil
+	if lxmString != "" {
+		lxmTmp, err := syntax.ParseNSID(lxmString)
+		if err != nil {
+			return fmt.Errorf("lxm argument must be a valid NSID: %w", err)
+		}
+		lxm = &lxmTmp
+	}
+
+	aud := cmd.String("audience")
+	// TODO: can aud DID have a fragment?
+	_, err = syntax.ParseDID(aud)
+	if err != nil {
+		return fmt.Errorf("aud argument must be a valid DID: %w", err)
+	}
+
+	durSec := cmd.Int("duration-sec")
+	duration := time.Duration(durSec * int(time.Second))
+
+	token, err := auth.SignServiceAuth(iss, aud, duration, lxm, privkey)
+	if err != nil {
+		return fmt.Errorf("failed signing token: %w", err)
+	}
+
+	fmt.Println(token)
+
+	return nil
+}
+
+func runAccountCreate(ctx context.Context, cmd *cli.Command) error {
+	return createAccount(ctx, cmd, cmd.String("invite-code"))
+}
+
+// helper for creating a PDS account.
+// inviteCode is optional (ignored if empty string). any "invite-code" arg from cmd is ignored.
+func createAccount(ctx context.Context, cmd *cli.Command, inviteCode string) error {
+
+	// validate args
+	pdsHost := cmd.String("pds-host")
+	if !strings.Contains(pdsHost, "://") {
+		return fmt.Errorf("PDS host is not a url: %s", pdsHost)
+	}
+	handle := cmd.String("handle")
+	_, err := syntax.ParseHandle(handle)
+	if err != nil {
+		return err
+	}
+	password := cmd.String("password")
+	params := &comatproto.ServerCreateAccount_Input{
+		Handle:   handle,
+		Password: &password,
+	}
+	raw := cmd.String("existing-did")
+	if raw != "" {
+		_, err := syntax.ParseDID(raw)
+		if err != nil {
+			return err
+		}
+		s := raw
+		params.Did = &s
+	}
+	raw = cmd.String("email")
+	if raw != "" {
+		s := raw
+		params.Email = &s
+	}
+	if inviteCode != "" {
+		params.InviteCode = &inviteCode
+	}
+
+	raw = cmd.String("recovery-key")
+	if raw != "" {
+		s := raw
+		params.RecoveryKey = &s
+	}
+
+	// create a new API client to connect to the account's PDS
+	client := atclient.NewAPIClient(pdsHost)
+	client.Client = &http.Client{
+		Timeout:   20 * time.Second,
+		Transport: ssrf.PublicOnlyTransport(),
+	}
+	client.Headers.Set("User-Agent", userAgentString())
+
+	raw = cmd.String("service-auth")
+	if raw != "" && params.Did != nil {
+		// Hack to inject service auth token as one-time access token (any refresh would fail)
+		client.Auth = &atclient.PasswordAuth{
+			Session: atclient.PasswordSessionData{
+				AccountDID:  syntax.DID(*params.Did),
+				AccessToken: raw,
+			},
+		}
+	}
+
+	resp, err := comatproto.ServerCreateAccount(ctx, client, params)
+	if err != nil {
+		return fmt.Errorf("failed to create account: %w", err)
+	}
+
+	fmt.Println("Success!")
+	fmt.Printf("DID: %s\n", resp.Did)
+	fmt.Printf("Handle: %s\n", resp.Handle)
+	return nil
+}

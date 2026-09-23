@@ -1,0 +1,304 @@
+package main
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"io"
+	"net/http"
+	"os"
+	"strings"
+	"time"
+
+	"github.com/bluesky-social/indigo/api/agnostic"
+	"github.com/bluesky-social/indigo/atproto/atclient"
+	"github.com/bluesky-social/indigo/atproto/atdata"
+	"github.com/bluesky-social/indigo/atproto/identity"
+	"github.com/bluesky-social/indigo/atproto/lexicon"
+	"github.com/bluesky-social/indigo/atproto/syntax"
+	"github.com/bluesky-social/indigo/util/ssrf"
+
+	"github.com/urfave/cli/v3"
+)
+
+var cmdLex = &cli.Command{
+	Name:  "lex",
+	Usage: "commands for Lexicon schemas",
+	Flags: []cli.Flag{},
+	Commands: []*cli.Command{
+		&cli.Command{
+			Name:      "resolve",
+			Usage:     "lookup a schema for an NSID",
+			ArgsUsage: `<nsid>`,
+			Flags: []cli.Flag{
+				&cli.BoolFlag{
+					Name:  "did",
+					Usage: "just resolve to DID, not the schema itself",
+				},
+			},
+			Action: runLexResolve,
+		},
+		&cli.Command{
+			// DEPRECATED
+			Name:      "parse",
+			Usage:     "parse and validate Lexicon schema files",
+			ArgsUsage: `<path>+`,
+			Flags:     []cli.Flag{},
+			Action:    runLexParse,
+		},
+		&cli.Command{
+			Name:      "ls",
+			Aliases:   []string{"list"},
+			Usage:     "list all known Lexicon NSIDs at the same level of hierarchy",
+			ArgsUsage: `<nsid>`,
+			Flags:     []cli.Flag{},
+			Action:    runLexList,
+		},
+		&cli.Command{
+			Name:      "validate",
+			Usage:     "validate a record, either AT-URI or local file",
+			ArgsUsage: `<uri-or-path>`,
+			Flags: []cli.Flag{
+				&cli.BoolFlag{
+					Name:  "allow-legacy-blob",
+					Usage: "be permissive of legacy blobs",
+				},
+				&cli.StringFlag{
+					Name:    "catalog",
+					Aliases: []string{"c"},
+					Usage:   "path to directory of Lexicon files",
+				},
+			},
+			Action: runLexValidate,
+		},
+		cmdLexStatus,
+		cmdLexLint,
+		cmdLexBreaking,
+		cmdLexDiff,
+		cmdLexPull,
+		cmdLexPublish,
+		cmdLexUnpublish,
+		cmdLexNew,
+		cmdLexCheckDNS,
+	},
+}
+
+func loadSchemaFile(p string) (map[string]any, error) {
+	f, err := os.Open(p)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = f.Close() }()
+	b, err := io.ReadAll(f)
+	if err != nil {
+		return nil, err
+	}
+
+	// verify format
+	var sf lexicon.SchemaFile
+	if err := json.Unmarshal(b, &sf); err != nil {
+		return nil, err
+	}
+	// TODO: additional validation?
+
+	// parse as raw data
+	d, err := atdata.UnmarshalJSON(b)
+	if err != nil {
+		return nil, err
+	}
+	return d, nil
+}
+
+func runLexParse(ctx context.Context, cmd *cli.Command) error {
+	if cmd.Args().Len() <= 0 {
+		return fmt.Errorf("require at least one path to parse")
+	}
+	for _, path := range cmd.Args().Slice() {
+		_, err := loadSchemaFile(path)
+		if err != nil {
+			return fmt.Errorf("failed to parse %s: %w", path, err)
+		}
+		fmt.Printf("%s: success\n", path)
+	}
+	return nil
+}
+
+func runLexResolve(ctx context.Context, cmd *cli.Command) error {
+	raw := cmd.Args().First()
+	if raw == "" {
+		return fmt.Errorf("NSID argument is required")
+	}
+
+	// TODO: handle fragments
+	nsid, err := syntax.ParseNSID(raw)
+	if err != nil {
+		return err
+	}
+	if cmd.Bool("did") {
+		bdir := configBaseDirectory(cmd.String("plc-host"))
+		did, err := bdir.ResolveNSID(ctx, nsid)
+		if err != nil {
+			return err
+		}
+		fmt.Println(did)
+		return nil
+	}
+
+	dir := configDirectory(cmd.String("plc-host"))
+
+	data, err := lexicon.ResolveLexiconData(ctx, dir, nsid)
+	if err != nil {
+		return err
+	}
+
+	b, err := json.MarshalIndent(data, "", "  ")
+	if err != nil {
+		return err
+	}
+	fmt.Println(string(b))
+
+	return nil
+}
+
+func runLexList(ctx context.Context, cmd *cli.Command) error {
+	raw := cmd.Args().First()
+	if raw == "" {
+		return fmt.Errorf("NSID argument is required")
+	}
+
+	// TODO: handle fragments?
+	nsid, err := syntax.ParseNSID(raw)
+	if err != nil {
+		return err
+	}
+	authority := nsid.Authority()
+
+	bdir := identity.BaseDirectory{}
+	did, err := bdir.ResolveNSID(ctx, nsid)
+	if err != nil {
+		return err
+	}
+
+	dir := configDirectory(cmd.String("plc-host"))
+	ident, err := dir.LookupDID(ctx, did)
+	if err != nil {
+		return err
+	}
+
+	// create a new API client to connect to the account's PDS
+	c := atclient.NewAPIClient(ident.PDSEndpoint())
+	c.Client = &http.Client{
+		Timeout:   20 * time.Second,
+		Transport: ssrf.PublicOnlyTransport(),
+	}
+	c.Headers.Set("User-Agent", userAgentString())
+	if c.Host == "" {
+		return fmt.Errorf("no PDS endpoint for identity")
+	}
+
+	// iterate through all records in the lexicon schema collection, and check if prefix ("authority") matches that of the original NSID
+	// NOTE: much of this code is copied from runRecordList
+	cursor := ""
+	for {
+		// collection string, cursor string, limit int64, repo string, reverse bool
+		resp, err := agnostic.RepoListRecords(ctx, c, "com.atproto.lexicon.schema", cursor, 100, ident.DID.String(), false)
+		if err != nil {
+			return err
+		}
+		for _, rec := range resp.Records {
+			aturi, err := syntax.ParseATURI(rec.Uri)
+			if err != nil {
+				return err
+			}
+			schemaNSID, err := syntax.ParseNSID(aturi.RecordKey().String())
+			if err != nil {
+				continue
+			}
+			if schemaNSID.Authority() == authority {
+				fmt.Println(schemaNSID)
+			}
+		}
+		if resp.Cursor != nil && *resp.Cursor != "" {
+			cursor = *resp.Cursor
+		} else {
+			break
+		}
+	}
+
+	return nil
+}
+
+func runLexValidate(ctx context.Context, cmd *cli.Command) error {
+	ref := cmd.Args().First()
+	if ref == "" {
+		return fmt.Errorf("URI or file path argument is required")
+	}
+
+	var nsid syntax.NSID
+	var recordData map[string]any
+	dir := identity.BaseDirectory{
+		PLCURL:    cmd.String("plc-host"),
+		UserAgent: userAgentString(),
+	}
+	cat := lexicon.NewResolvingCatalog()
+
+	var flags lexicon.ValidateFlags = 0
+	if cmd.Bool("allow-legacy-blob") {
+		flags |= lexicon.AllowLegacyBlob
+	}
+
+	if cmd.String("catalog") != "" {
+		fmt.Printf("loading catalog directory: %s\n", cmd.String("catalog"))
+		if err := cat.Base.LoadDirectory(cmd.String("catalog")); err != nil {
+			return err
+		}
+	}
+
+	// fetch from network if an AT-URI
+	if strings.HasPrefix(ref, "at://") {
+		aturi, err := syntax.ParseATURI(ref)
+		if err != nil {
+			return err
+		}
+		nsid = aturi.Collection()
+
+		ident, err := dir.Lookup(ctx, aturi.Authority())
+		if err != nil {
+			return err
+		}
+
+		recordData, err = fetchRecord(ctx, *ident, aturi)
+		if err != nil {
+			return err
+		}
+	} else {
+		// otherwise try to read from disk
+		recordBytes, err := os.ReadFile(ref)
+		if err != nil {
+			return err
+		}
+
+		rawNSID, err := atdata.ExtractTypeJSON(recordBytes)
+		if err != nil {
+			return fmt.Errorf("failed to parse '$type' from record data: %w", err)
+		}
+		if rawNSID == "" {
+			return fmt.Errorf("failed to parse '$type' from record data: empty or undefined")
+		}
+		nsid, err = syntax.ParseNSID(rawNSID)
+		if err != nil {
+			return fmt.Errorf("failed to parse '$type' from record data: %w", err)
+		}
+
+		recordData, err = atdata.UnmarshalJSON(recordBytes)
+		if err != nil {
+			return fmt.Errorf("failed to parse record data: %w", err)
+		}
+	}
+
+	if err := lexicon.ValidateRecord(cat, recordData, nsid.String(), flags); err != nil {
+		return err
+	}
+	fmt.Printf("valid %s record\n", nsid)
+	return nil
+}

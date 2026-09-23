@@ -1,0 +1,269 @@
+---
+sidebar_position: 3
+description: Jetstream hands you just the slice of the network you want, as JSON, live or historical, with no sync infrastructure to run yourself.
+---
+
+import Tabs from '@theme/Tabs';
+import TabItem from '@theme/TabItem';
+
+# Jetstream
+
+**Jetstream** is the easiest way to get data off the [AT Protocol](https://atproto.com) network at scale.
+Filter the records you want (likes, posts, a single account), and Jetstream streams them as plain JSON over one WebSocket, the moment
+they happen.
+
+Jetstream delivers data live, or replayed from history, or both at once, through the same
+interface. The same code works whether you're building a realtime
+bot or replaying a month of history into a larger application.
+
+There are three ways to consume it:
+
+- **Live tail** — a single WebSocket that streams events the moment they happen.
+- **[Replay](/docs/jetstream-replay)** — the WebSocket plus a few HTTP calls to
+  pull history, then cut over to live.
+- **[Snapshotting](/docs/jetstream-replay#snapshotting-a-point-in-time-copy)** — a point-in-time copy of the archive over HTTP, with no live
+  tail.
+
+Jetstream is [open source](https://github.com/bluesky-social/jetstream),
+implemented in Go, and cheap to self-host. Read on to interact with Bluesky's public instances.
+
+## Quickstart: live tail
+
+Open a WebSocket to the `subscribeEvents` endpoint and start reading events. Filter as needed:
+
+<Tabs groupId="lang">
+  <TabItem value="typescript" label="TypeScript">
+    Use the [**Jetstream SDK**](/docs/jetstream-sdk):
+
+    ```ts
+    // npm install @bsky/jetstream
+    import { Jetstream } from '@bsky/jetstream'
+
+    const jetstream = new Jetstream('https://jetstream.us-east.bsky.network')
+
+    for await (const evt of jetstream.live({ collections: ['app.bsky.feed.post'] })) {
+      console.log(evt)
+    }
+    ```
+  </TabItem>
+  <TabItem value="go" label="Go">
+    Use the [**Jetstream SDK**](/docs/jetstream-sdk):
+
+    ```go
+    // go get github.com/bluesky-social/jetstream
+    package main
+
+    import (
+    	"context"
+    	"fmt"
+
+    	"github.com/bluesky-social/jetstream"
+    )
+
+    func main() {
+    	client, err := jetstream.Subscribe(
+    		"jetstream.us-east.bsky.network",
+    		jetstream.WithCollection("app.bsky.feed.post"),
+    	)
+    	if err != nil {
+    		panic(err)
+    	}
+    	defer client.Close()
+
+    	for batch, err := range client.Events(context.Background()) {
+    		if err != nil {
+    			continue
+    		}
+    		for _, evt := range batch.Events() {
+    			fmt.Println(evt.Seq, evt.DID, evt.Kind)
+    		}
+    	}
+    }
+    ```
+  </TabItem>
+  <TabItem value="python" label="Python">
+    ```python
+    import asyncio
+    import json
+    import websockets
+
+    URI = (
+      "wss://jetstream.us-east.bsky.network/xrpc/network.bsky.jetstream.subscribeEvents"
+      "?collections=app.bsky.feed.post&kinds=commit"
+    )
+
+    async def listen():
+      async with websockets.connect(URI, subprotocols=["xrpc.v1.json"]) as ws:
+        async for frame in ws:
+          event = json.loads(frame)["payload"]
+          if event["operation"] != "delete":
+            print(event["seq"], event["did"], event["record"]["text"])
+
+    asyncio.run(listen())
+    ```
+  </TabItem>
+  <TabItem value="shell" label="Shell">
+    ```shell
+    websocat --protocol xrpc.v1.json "wss://jetstream.us-east.bsky.network/xrpc/network.bsky.jetstream.subscribeEvents?collections=app.bsky.feed.post&kinds=commit"
+    ```
+  </TabItem>
+</Tabs>
+
+Each message is a self-contained JSON object: an envelope with the event under
+`payload`, tagged by a `$type`. A `commit` event — someone creating, updating,
+or deleting a record — looks like this:
+
+```json
+{
+  "$type": "message",
+  "payload": {
+    "$type": "network.bsky.jetstream.subscribeEvents#commit",
+    "did": "did:plc:7e6kocyzb77xkncplrkoojej",
+    "seq": 24664288881,
+    "time": "2026-08-13T06:47:43.959305Z",
+    "operation": "create",
+    "collection": "app.bsky.feed.like",
+    "rkey": "3msx2efqdxs27",
+    "rev": "3msx2efqjtc27",
+    "cid": "bafyreigwnxqttkhzha2ig4io6wwht3qiugtor4ruglceyfdbnyq53a55fe",
+    "record": {
+      "$type": "app.bsky.feed.like",
+      "createdAt": "2026-08-13T06:47:44.859Z",
+      "subject": {
+        "cid": "bafyreibfn4d6xedoe6jixkcl266v2fhiwga2x3zzsnq6yawnago2kb5ouu",
+        "uri": "at://did:plc:gdcz3s2rofr4bbom5bx3kqrr/app.bsky.feed.post/3mjfhkjsshs2q"
+      }
+    }
+  }
+}
+```
+
+The record arrives already decoded in the `record` field, so there's no second
+parsing step. A `delete` carries no `record` or `cid` — just the `collection`
+and `rkey` that identify what went away. Alongside `commit` events, the stream
+also carries `identity`, `account`, and `sync` events, each with its own
+`$type` and a payload field of the same name.
+
+### Public endpoints
+
+Bluesky runs two sets of public instances. The live tail works the same on
+both, with one addition on
+v2: each event also carries a `cursor` field (see
+[Resuming](#resuming-where-you-left-off)).
+
+| Version | Endpoint | Region |
+| --- | --- | --- |
+| **v2** | `wss://jetstream.us-west.bsky.network` | US West |
+| **v2** | `wss://jetstream.us-east.bsky.network` | US East |
+| **v1** | `wss://jetstream1.us-west.bsky.network` | US West |
+| **v1** | `wss://jetstream2.us-east.bsky.network` | US East |
+
+**Jetstream v2** is recommended for new projects. [Replay](/docs/jetstream-replay) and Snapshotting are only available on Jetstream v2. **Jetstream v1** provides [legacy timestamps](#resuming-where-you-left-off).
+
+No authentication is required for the live tail; these
+instances serve the full network.
+
+## Filtering: ask for just your slice
+
+Filtering happens server-side, so a narrow filter means less bandwidth and less
+work for your client. Three filters are available, and they combine:
+
+- **`collections`**: one or more [NSIDs](https://atproto.com/specs/nsid), or an
+  `app.bsky.feed.*`-style namespace wildcard. Repeat the parameter for multiple
+  collections.
+- **`dids`**: restrict the stream to specific accounts by DID. Repeat for
+  multiple accounts.
+- **`kinds`**: which event kinds to receive — `commit`, `identity`, `account`,
+  `sync`. Omit it for all four.
+
+```
+wss://jetstream.us-east.bsky.network/xrpc/network.bsky.jetstream.subscribeEvents
+  ?collections=app.bsky.feed.post
+  &collections=app.bsky.feed.like
+  &dids=did:plc:eygmaihciaxprqvxpfvl6flk
+  &kinds=commit
+```
+
+A collection filter constrains **commit** events only — `identity`, `account`,
+and `sync` events flow regardless — so a commits-only stream needs
+`kinds=commit` as well.
+
+:::tip Filter limits
+A single subscription accepts up to **100** collections and **10,000** DIDs.
+Exceeding either is rejected before the WebSocket upgrade, so a client that
+builds its filter list dynamically should bound it rather than discover the cap
+as a failed connection.
+:::
+
+## Resuming where you left off
+
+Every event carries a `seq`, a monotonically increasing sequence number. If your
+consumer drops, reconnect with `?cursor=N` (the last value you processed) and
+Jetstream replays from there, within a bounded lookback window:
+
+```
+wss://jetstream.us-east.bsky.network/xrpc/network.bsky.jetstream.subscribeEvents?collections=app.bsky.feed.post&kinds=commit&cursor=12345
+```
+
+The cursor is **inclusive** — you'll receive event `N` itself again — and
+delivery is **at-least-once**, so an event may arrive more than once across a
+reconnect. Make your handlers idempotent. Key on each record's `at://` URI, so duplicates are harmless.
+
+For the live tail only, `cursor` also accepts a unix-microsecond timestamp, which the server recognizes
+by its magnitude and translates to the nearest `seq`. That's how you resume from a point in time
+rather than a specific event — and it's what lets a consumer written against v1's `time_us` keep working
+against a v2 host.
+
+## Getting history, not just live
+
+When you also need historical data — e.g., every `app.bsky.feed.post` from the
+last month, then live updates from there — Jetstream **replays** the archive over
+HTTP and cuts over to this live tail at the tip. The server holds the archive, so
+there's nothing to stage on your side; your code never has to know whether a
+given event is history or real time.
+
+This flow is called **[Network Replay](/docs/jetstream-replay)**. It uses the
+same filters as the live tail and adds a few authenticated HTTP calls to pull
+the history.
+
+## How Jetstream relates to the firehose
+
+Under the hood, Jetstream consumes the network's full
+[firehose](/docs/consuming-the-firehose) from a [Relay](/docs/relay) and does
+the decoding and filtering so you don't have to.
+You generally only need the raw firehose when you want full network proofs:
+
+| | Jetstream | [Relay firehose](/docs/consuming-the-firehose) |
+| --- | --- | --- |
+| Encoding | **JSON**, already decoded | binary (DAG-CBOR + CAR) |
+| Filtering | by **collection** and/or **DID** | none; you get everything |
+| History | **live, historical, or both** | live only |
+| What you run | a WebSocket client | a CBOR/CAR decoder, cursor logic |
+
+Use the [raw firehose](/docs/consuming-the-firehose) when you need every
+record with no filtering, or the cryptographic proofs to verify repository state
+yourself. For nearly everything else, Jetstream is the simpler path.
+
+## Running your own Jetstream
+
+The public instances are enough for most consumers. If you'd rather run your
+own, Jetstream is a single static Go binary that archives the network to local
+disk and serves the same live tail, replay, and snapshot endpoints as the
+public instances. **[Running your own
+Jetstream](/docs/jetstream-self-host)** covers what to expect: the initial
+backfill, hardware, configuration, and how to gate the expensive replay
+endpoints the way Bluesky's instances do.
+
+## See also
+
+- **[Jetstream SDK](/docs/jetstream-sdk)**: TypeScript and Go clients that open
+  the socket, decode and type events, and reconnect for you.
+- **[Network Replay](/docs/jetstream-replay)**: replay history and cut over to
+  live through one interface.
+- **[HTTP reference](https://endpoints.bsky.app/#jetstream)**: the `network.bsky.jetstream.*`
+  methods that back replay.
+- **[Running your own Jetstream](/docs/jetstream-self-host)**: the same
+  archive and endpoints, self-hosted.
+- **[Relay](/docs/relay)** and **[Consuming the firehose](/docs/consuming-the-firehose)**:
+  the raw, full-fidelity path, for when you need binary records or cryptographic
+  verification.

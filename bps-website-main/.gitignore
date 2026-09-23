@@ -1,0 +1,37 @@
+# Dependencies
+/node_modules
+
+# Production
+/build
+
+# Generated files
+.docusaurus
+.cache-loader
+
+# Misc
+.DS_Store
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Don't ignore this file itself, or some hidden files
+!.gitignore
+!.node-version
+
+# Visual brainstorming companion
+.superpowers/
+# Backend service
+/server/node_modules
+/server/src/lexicons
+
+# Generated site-side lexicon client types
+/src/lexicons
+
+# NOT ignored: .sequoia-state.json is the slug -> AT-URI ledger that
+# `sequoia inject` reads (it does not read post front matter), and the image
+# build runs inject. Absent from a CI checkout, the site ships unverifiable.

@@ -1,0 +1,61 @@
+{
+  "lexicon": 1,
+  "id": "internal.bps.apiKey.list",
+  "defs": {
+    "main": {
+      "type": "query",
+      "description": "List the caller's Jetstream API keys (metadata only; never the secret).",
+      "output": {
+        "encoding": "application/json",
+        "schema": {
+          "type": "object",
+          "required": ["keys"],
+          "properties": {
+            "keys": {
+              "type": "array",
+              "items": {
+                "type": "ref",
+                "ref": "#keyMeta"
+              }
+            }
+          }
+        }
+      }
+    },
+    "keyMeta": {
+      "type": "object",
+      "required": ["id", "label", "preview", "createdAt", "status"],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "label": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "preview": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "datetime"
+        },
+        "expiresAt": {
+          "type": "string",
+          "format": "datetime"
+        },
+        "status": {
+          "type": "string",
+          "knownValues": ["active", "expired", "future"],
+          "description": "Lifecycle of the key. Revoked (deleted) keys are never listed. 'future' means the key is not yet valid.",
+          "maxLength": 64
+        }
+      }
+    }
+  }
+}

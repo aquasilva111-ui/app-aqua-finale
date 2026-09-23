@@ -1,19 +1,6 @@
 import {forwardRef} from 'react'
 import {type TextProps} from 'react-native'
-import Svg, {
-  Defs,
-  LinearGradient,
-  Path,
-  type PathProps,
-  Stop,
-  type SvgProps,
-} from 'react-native-svg'
-import {Image} from 'expo-image'
-
-import {useLogoVariant} from '#/view/icons/useLogoVariant'
-import {flatten, useTheme} from '#/alf'
-
-const ratio = 57 / 64
+import Svg, {Circle, type PathProps, type SvgProps} from 'react-native-svg'
 
 type Props = {
   allowVariants?: boolean
@@ -22,58 +9,31 @@ type Props = {
 } & Omit<SvgProps, 'style'>
 
 export const Logo = forwardRef(function LogoImpl(props: Props, ref) {
-  const t = useTheme()
-  const {allowVariants = true, fill, ...rest} = props
-  const gradient = fill === 'sky'
-  const styles = flatten(props.style)
-  const _fill = gradient
-    ? 'url(#sky)'
-    : fill || styles?.color || t.palette.primary_500
-  // @ts-expect-error it's fiiiiine
-  const size = parseInt(rest.width || 32, 10)
-
-  const logoVariant = useLogoVariant(allowVariants)
-
-  if (logoVariant !== 'default') {
-    const isJapanLogo = logoVariant === 'japan'
-    return (
-      <Image
-        source={
-          isJapanLogo
-            ? require('../../../assets/icons/custom_logo_japan.svg')
-            : size > 100
-              ? require('../../../assets/kawaii.png')
-              : require('../../../assets/kawaii_smol.png')
-        }
-        accessibilityLabel="Bluesky"
-        accessibilityHint=""
-        accessibilityIgnoresInvertColors
-        style={[{height: size, aspectRatio: isJapanLogo ? 2 : 1.4}]}
-      />
-    )
-  }
+  const {
+    allowVariants: _allowVariants,
+    fill: _fill,
+    style,
+    width = 32,
+    ...rest
+  } = props
+  const size = Number.parseInt(`${width}`, 10)
 
   return (
     <Svg
+      accessibilityHint=""
+      accessibilityLabel="Aqua"
       fill="none"
-      // @ts-expect-error it's fiiiiine
+      // @ts-expect-error react-native-svg's forwarded ref type is narrower
       ref={ref}
-      viewBox="0 0 64 57"
+      viewBox="0 0 810 810"
       {...rest}
-      style={[{width: size, height: size * ratio}, styles]}>
-      {gradient && (
-        <Defs>
-          <LinearGradient id="sky" x1="0" y1="0" x2="0" y2="1">
-            <Stop offset="0" stopColor="#0A7AFF" stopOpacity="1" />
-            <Stop offset="1" stopColor="#59B9FF" stopOpacity="1" />
-          </LinearGradient>
-        </Defs>
-      )}
-
-      <Path
-        fill={_fill}
-        d="M13.873 3.805C21.21 9.332 29.103 20.537 32 26.55v15.882c0-.338-.13.044-.41.867-1.512 4.456-7.418 21.847-20.923 7.944-7.111-7.32-3.819-14.64 9.125-16.85-7.405 1.264-15.73-.825-18.014-9.015C1.12 23.022 0 8.51 0 6.55 0-3.268 8.579-.182 13.873 3.805ZM50.127 3.805C42.79 9.332 34.897 20.537 32 26.55v15.882c0-.338.13.044.41.867 1.512 4.456 7.418 21.847 20.923 7.944 7.111-7.32 3.819-14.64-9.125-16.85 7.405 1.264 15.73-.825 18.014-9.015C62.88 23.022 64 8.51 64 6.55c0-9.818-8.578-6.732-13.873-2.745Z"
-      />
+      width={size}
+      height={size}
+      style={style}>
+      <Circle cx="405" cy="405" r="381" fill="#11278C" />
+      <Circle cx="405" cy="405" r="218.5" fill="#FFFFFF" />
+      <Circle cx="405" cy="405" r="155.5" fill="#68B8E9" />
+      <Circle cx="405" cy="405" r="79.5" fill="#000000" />
     </Svg>
   )
 })

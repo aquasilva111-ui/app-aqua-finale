@@ -1,0 +1,111 @@
+name: containers
+
+# Every branch push builds both images so Dockerfile failures surface before
+# merge. Only main publishes: branch workflows receive no package-write token,
+# and fork pull requests cannot reach this push-only workflow in the base repo.
+on:
+  push:
+
+# Superseded branch builds are pure waste; main builds publish full-commit-SHA
+# tags and must all complete.
+concurrency:
+  group: containers-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+jobs:
+  validate:
+    name: build (${{ matrix.service }})
+    if: >
+      github.repository == 'bluesky-social/bps-website' &&
+      github.ref != 'refs/heads/main' &&
+      !startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - service: bps-website-ui
+            file: ./Dockerfile
+            build_args: |
+              BPS_PUBLIC_API_ORIGIN=${{ vars.BPS_PUBLIC_API_ORIGIN }}
+              BPS_SPACES_PDS_URL=${{ vars.BPS_SPACES_PDS_URL }}
+              ENDPOINTS_URL=${{ vars.ENDPOINTS_URL }}
+          - service: bps-website-api
+            file: ./server/Dockerfile
+            build_args: ""
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: ./.github/actions/build-container
+        with:
+          service: ${{ matrix.service }}
+          file: ${{ matrix.file }}
+          build-args: ${{ matrix.build_args }}
+          bps-public-api-origin: ${{ vars.BPS_PUBLIC_API_ORIGIN }}
+          bps-spaces-pds-url: ${{ vars.BPS_SPACES_PDS_URL }}
+          push: "false"
+
+  publish:
+    # GitHub evaluates this job's `if` before expanding its matrix. Keep the
+    # name static so skipped branch runs don't display a literal matrix
+    # expression. It remains distinct from the branch-validation check.
+    name: publish
+    if: >
+      github.repository == 'bluesky-social/bps-website' &&
+      github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - service: bps-website-ui
+            file: ./Dockerfile
+            build_args: |
+              BPS_PUBLIC_API_ORIGIN=${{ vars.BPS_PUBLIC_API_ORIGIN }}
+              BPS_SPACES_PDS_URL=${{ vars.BPS_SPACES_PDS_URL }}
+              ENDPOINTS_URL=${{ vars.ENDPOINTS_URL }}
+          - service: bps-website-api
+            file: ./server/Dockerfile
+            build_args: ""
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+
+      - name: Log in to GHCR
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: ./.github/actions/build-container
+        with:
+          service: ${{ matrix.service }}
+          file: ${{ matrix.file }}
+          build-args: ${{ matrix.build_args }}
+          bps-public-api-origin: ${{ vars.BPS_PUBLIC_API_ORIGIN }}
+          bps-spaces-pds-url: ${{ vars.BPS_SPACES_PDS_URL }}
+          push: "true"
+
+      # Fail closed if the package does not inherit public visibility from this
+      # public repository. Changing package visibility requires administrative
+      # credentials that this publishing workflow deliberately does not have.
+      - name: Verify anonymous pull
+        env:
+          IMAGE: ghcr.io/${{ github.repository_owner }}/${{ matrix.service }}:${{ github.sha }}
+        run: |
+          set -euo pipefail
+          docker logout ghcr.io
+          for attempt in 1 2 3 4 5; do
+            if docker buildx imagetools inspect "$IMAGE" >/dev/null; then
+              exit 0
+            fi
+            if [ "$attempt" -eq 5 ]; then
+              echo "::error::$IMAGE is not anonymously pullable."
+              exit 1
+            fi
+            sleep 2
+          done

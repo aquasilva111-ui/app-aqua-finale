@@ -1,0 +1,26 @@
+---
+sidebar_position: 8
+---
+
+# OAuth
+
+Bluesky accounts authenticate with OAuth. The protocol-level OAuth documentation lives on [atproto.com](https://atproto.com), and most developers should reach for an SDK that implements it rather than building a client by hand.
+
+## Getting started
+
+- [About OAuth](https://atproto.com/guides/about-oauth) — an overview of atproto OAuth, the available SDKs, and common app architectures (public vs. confidential clients, backend-for-frontend, etc.).
+- Most languages have an SDK that handles OAuth — including DPoP, PKCE, PAR, and token refresh — for you. See the [SDK list](https://atproto.com/sdks).
+
+## Implementing OAuth
+
+- Hands-on tutorials: [OAuth with Next.js](https://atproto.com/guides/oauth-tutorial), [OAuth with Node](https://atproto.com/guides/oauth-cli-tutorial), and [OAuth with Go](https://atproto.com/guides/go-oauth-cli-tutorial).
+- Implementing a client without an SDK? [OAuth Patterns](https://atproto.com/guides/oauth-patterns) covers DPoP, PKCE, PAR, token refresh, and session storage.
+- The [atproto OAuth specification](https://atproto.com/specs/oauth) is the authoritative reference for client metadata, client types, scopes, and the full authorization flow.
+
+Bluesky's own OAuth permission sets are published under the `bsky-lexicons.bsky.social` identity, browsable [on the network](https://pdsls.dev/at://did:plc:4v4y5r3lwsbtmsxhile2ljac/com.atproto.lexicon.schema).
+
+:::note
+Applications with their own end-user login flow should implement OAuth. Single-purpose applications such as bots or command-line tools may use [app password authentication](/docs/bluesky-api#create-a-session) instead.
+:::
+
+For service-to-service authentication (inter-service JWTs), see [Service Auth](/docs/api-directory#service-auth).

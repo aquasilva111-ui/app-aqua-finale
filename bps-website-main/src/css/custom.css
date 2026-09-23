@@ -1,0 +1,1484 @@
+/**
+ * Any CSS included here will be global. The classic template
+ * bundles Infima by default. Infima is a CSS framework designed to
+ * work well for content-centric websites.
+ */
+
+/* You can override the default Infima variables here. */
+:root {
+  /* Light-mode primary = #0052CC — the dark stop of the butterfly logo gradient
+   * (#bsky-grad). Variants are conventional Infima shade/tint steps. */
+  --ifm-color-primary: #0052cc;
+  --ifm-color-primary-dark: #004ab8;
+  --ifm-color-primary-darker: #0046ad;
+  --ifm-color-primary-darkest: #00398f;
+  --ifm-color-primary-light: #1a64d1;
+  --ifm-color-primary-lighter: #2670d4;
+  --ifm-color-primary-lightest: #4d89dc;
+  --ifm-code-font-size: 95%;
+  --docusaurus-highlighted-code-line-bg: rgba(0, 0, 0, 0.1);
+  /* Account-section divider — a blue-tinted rule (light mode). Bluer + a touch
+   * more present than the flat grey #dfe3e8 so dividers actually read. */
+  --bps-account-divider: #d3dae8;
+}
+
+/* Dark-mode primary = #7DD3FC — the light stop of the butterfly logo gradient
+ * (#bsky-grad); a lighter palette for legibility on the dark surface. */
+[data-theme='dark'] {
+  --ifm-color-primary: #7dd3fc;
+  --ifm-color-primary-dark: #5cc6fb;
+  --ifm-color-primary-darker: #4fc0fb;
+  --ifm-color-primary-darkest: #1cabf8;
+  --ifm-color-primary-light: #9eddfd;
+  --ifm-color-primary-lighter: #ade3fd;
+  --ifm-color-primary-lightest: #dbf3fe;
+  --docusaurus-highlighted-code-line-bg: rgba(0, 0, 0, 0.3);
+  /* Account-section divider — a dark blue (dark mode), bluer than #2a3340. */
+  --bps-account-divider: #2d3b54;
+}
+
+/* =====================================================================
+ * BPS BRAND PALETTE — site-wide named constants
+ * The single source of truth for the brand's raw color swatches, so custom
+ * styles reference a name instead of repeating the hex. These are theme-
+ * INDEPENDENT constants (a swatch list), not theme-flipping tokens: light/dark
+ * selection still happens at the use site (light rules lean on Infima's
+ * --ifm-color-emphasis-* ramp; dark `html[data-theme='dark']` blocks pull the
+ * dark surface/ink/rule swatches below). Names match landing.css so the two
+ * sheets share one vocabulary. custom.css is the only site-wide stylesheet, so
+ * defining them here makes them available everywhere (landing.css, loaded only
+ * on the homepage, re-states the overlapping few — same values). */
+:root {
+  /* surfaces — dark */
+  --bps-paper: #0d1117; /* base page paper */
+  --bps-paper-2: #161c26; /* raised panel (cards, code body) */
+  --bps-surface-3: #1c2532; /* hover / inset fills above paper-2 */
+  /* surfaces — light */
+  --bps-white: #ffffff;
+  --bps-surface-light-2: #fafbfc; /* faint off-white input fill */
+
+  /* rules — dark */
+  --bps-rule: #1f2733;
+  --bps-rule-2: #2a3340;
+  --bps-rule-3: #3d4e60; /* stronger dark rule (focus-adjacent borders) */
+  /* rules — light */
+  --bps-rule-light: #dfe3e8;
+  --bps-rule-light-2: #c9d1d9;
+
+  /* ink — dark surfaces (brightest → faintest) */
+  --bps-ink: #f0f6fc;
+  --bps-ink-2: #e6edf3; /* input text */
+  --bps-ink-soft: #c4ccd8;
+  --bps-ink-muted: #8893a2;
+  --bps-ink-faint: #5a6473;
+
+  /* accent — brand blue on dark surfaces */
+  --bps-blue-dark: #3994ff;
+
+  /* danger — destructive actions / errors */
+  --bps-danger: #d0454c; /* light base */
+  --bps-danger-dark: #da3633; /* dark base */
+  --bps-danger-hover: #b53c43; /* light hover */
+  --bps-danger-hover-dark: #c22f2c; /* dark hover */
+  --bps-danger-text: #c0392b; /* error text, light */
+  --bps-danger-text-dark: #ff7b72; /* error text, dark */
+  --bps-danger-text-bright: #ff9a94; /* emphasized danger text, dark */
+
+  /* success — confirmations / active status */
+  --bps-success: #2e9e57; /* light */
+  --bps-success-dark: #3fb950; /* dark */
+
+  /* Corner radius scale — one source of truth for the four corner sizes used
+   * across BPS surfaces. Earlier the codebase used 3/4/5/6/7/8/9/10/12px almost
+   * as a continuum; these four steps collapse that to perceptible tiers. Fully
+   * round shapes (50% avatars/icon-buttons, 999px pills) stay literal — they're
+   * a different intent than the corner scale, and self-documenting. */
+  --bps-radius-sm: 4px; /* inline tags, small chips, carets */
+  --bps-radius-md: 6px; /* controls: inputs, buttons, small boxes */
+  --bps-radius-lg: 8px; /* cards, code blocks, key list */
+  --bps-radius-xl: 10px; /* large containers, hero corner */
+
+  /* UI type scale — the chrome/label/body band. Earlier this range held ~15
+   * near-duplicate sizes (0.62–0.9rem, steps as small as 0.01rem ≈ 0.16px);
+   * these five steps collapse it to perceptible tiers. Display/title sizes
+   * (the .markdown heading ramp, and the ~1.0–1.3rem one-offs) and em-relative
+   * sizes are deliberately NOT in the scale — they're single-use or
+   * context-relative. The bespoke px masthead/homepage keep their own sizes. */
+  --bps-text-2xs: 0.66rem; /* micro mono labels, eyebrows, admonition headings */
+  --bps-text-xs: 0.72rem; /* captions, mono metadata, small mono buttons */
+  --bps-text-sm: 0.78rem; /* secondary buttons, notes */
+  --bps-text-md: 0.82rem; /* descriptive body text */
+  --bps-text-base: 0.875rem; /* inputs, primary body, sidebar/footer links */
+
+  /* Spacing scale — for SINGLE-AXIS spacing (gap, and single-value margin /
+   * padding). Steps follow a ~4px grid; the low end keeps the 6px/10px stops
+   * the UI actually leans on. Near-duplicates that differed by <1px (0.2/0.3 vs
+   * 0.25; 0.35/0.4 vs 0.375; 0.6/0.65 vs 0.625) are unified here.
+   * Scope note: multi-value padding/margin SHORTHANDS (e.g. card boxes with
+   * intentionally asymmetric top/bottom) are left as literals — they're
+   * per-component box compositions, not scale steps — as are large one-off
+   * section paddings (2.25/2.5/3/4rem). */
+  --bps-space-2xs: 0.25rem; /* 4px  — tight inline gaps */
+  --bps-space-xs: 0.375rem; /* 6px  — icon/label gaps */
+  --bps-space-sm: 0.5rem; /* 8px  — control gaps */
+  --bps-space-md: 0.625rem; /* 10px — row gaps */
+  --bps-space-lg: 0.75rem; /* 12px — group gaps */
+  --bps-space-xl: 1rem; /* 16px — block gaps */
+  --bps-space-2xl: 1.25rem; /* 20px — section inner gaps */
+  --bps-space-3xl: 1.5rem; /* 24px — section gaps */
+}
+
+/* =====================================================================
+ * DOCS READING SURFACE — type & accent foundation (mono-accent anchor)
+ * Body & headings: Inter. Monospace (JetBrains Mono) is a deliberate
+ * accent only (nav category, breadcrumb, admonition labels, code, inline
+ * code). Reuses the landing page's font stacks. Keeps the existing blue
+ * primary; does NOT change the palette.
+ * ===================================================================== */
+:root {
+  --ifm-font-family-base: Inter, ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  /* CODE mono (code blocks, inline code) — JetBrains Mono. */
+  --ifm-font-family-monospace: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+  --ifm-heading-font-family: var(--ifm-font-family-base);
+
+  /* heading scale — Inter, title case, tight tracking */
+  --ifm-h1-font-size: 2rem;       /* ~32px page title via article h1 (see §2 width note) */
+  --ifm-heading-font-weight: 680;
+  --ifm-font-size-base: 16px;
+  --ifm-line-height-base: 1.65;
+
+  /* UI mono accent — Atkinson Hyperlegible Mono — used for the mono "sprinkle"
+   * in NON-code chrome (left nav category labels, breadcrumbs, admonition
+   * labels). Code blocks/inline code keep --ifm-font-family-monospace. */
+  --bps-docs-mono: 'Atkinson Hyperlegible Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+
+  /* Paper surfaces — match the BPS design system per theme. Light mode uses
+   * an off-white "paper-light"; dark mode uses the BPS paper #0d1117 so the
+   * docs surface is seamless with the always-dark navbar.
+   * NOTE: --bps-paper itself is defined in landing.css, which is only loaded
+   * on the homepage — so we use literal hex here (not var(--bps-paper)) to be
+   * self-contained on docs pages. Selectors below use `html[data-theme=...]`
+   * to match Docusaurus's own specificity and override its default bg. */
+  --bps-paper-light: #f4f6f9;
+}
+html[data-theme='light'] {
+  --ifm-background-color: var(--bps-paper-light);
+}
+html[data-theme='dark'] {
+  --ifm-background-color: #0d1117;
+  --ifm-background-surface-color: #161c26;
+}
+
+/* Per-heading sizing/tracking for the docs article body. Scoped to
+ * .markdown so it doesn't affect navbar/footer/landing. */
+.markdown h1 { font-size: 1.95rem; font-weight: 680; letter-spacing: -0.02em; }
+.markdown h2 { font-size: 1.45rem; font-weight: 660; letter-spacing: -0.015em; }
+.markdown h3 { font-size: 1.18rem; font-weight: 620; letter-spacing: -0.012em; }
+.markdown h4 { font-size: 1.02rem; font-weight: 620; letter-spacing: -0.01em; }
+
+.screen-reader-only {
+  border: 0;
+  clip: rect(0 0 0 0);
+  clip-path: polygon(0 0, 0 0, 0 0);
+  height: 1px;
+  margin: -1px;
+  overflow: hidden;
+  padding: 0;
+  position: absolute;
+  width: 1px;
+  white-space: nowrap;
+}
+
+.hiddenTabs {
+  display: none;
+}
+
+/* =====================================================================
+ * BPS masthead navbar — adapted from the landing mockup
+ * (../bps-website/prototypes/landing-bsky.html). Applies site-wide and
+ * stays dark in both color modes (the dark/light toggle still controls the
+ * page body). Brand lockup + the three left entries are driven by custom
+ * navbar item components (src/components/Navbar/, registered in
+ * src/theme/NavbarItem/ComponentTypes.js).
+ * ===================================================================== */
+
+/* Fonts are loaded site-wide via `stylesheets` in docusaurus.config.js (a CSS
+ * @import here would be invalid — it must precede all rules — and was ignored). */
+
+.navbar {
+  /* ----- navbar palette tokens (dark defaults; light overrides below) ----- */
+  --bps-nav-bg: #0d1117;
+  --bps-nav-border: #1f2733;       /* bottom rule */
+  --bps-nav-ink: #f0f6fc;          /* wordmark line 1 */
+  --bps-nav-ink-soft: #c4ccd8;     /* links, wordmark line 2, toggle */
+  --bps-nav-hover: #3994ff;        /* accent on hover */
+  --bps-nav-sep: #4B5563;          /* middot separator */
+  --bps-nav-divider: #2a3340;      /* vertical dividers */
+  --bps-nav-surface: #161c26;      /* search box fill */
+  --bps-nav-surface-hover: #1c2330;
+  --bps-nav-rule: #2a3340;         /* search box + key borders */
+  --bps-nav-rule-hover: #38424f;
+  --bps-nav-key-bg: #0d1117;       /* ⌘K key caps */
+  --bps-nav-muted: #9ca3af;        /* search icon + placeholder + keys */
+  --bps-nav-error: #ff7b72;        /* inline error text (account sign-in), dark */
+  --bps-nav-on-accent: #fff;       /* fg on the accent/hover fill (buttons) */
+
+  --ifm-navbar-background-color: var(--bps-nav-bg);
+  --ifm-navbar-link-color: var(--bps-nav-ink-soft);
+  --ifm-navbar-link-hover-color: var(--bps-nav-hover);
+  --ifm-navbar-height: 64px;
+  --ifm-navbar-shadow: none;
+  box-shadow: none;
+  border-bottom: 1px solid var(--bps-nav-border);
+  /* NOTE: don't set position here — Docusaurus's .navbar--fixed-top supplies
+   * position: sticky, which we must preserve. A sticky element is still a
+   * containing block for the absolutely-positioned topo ::before, so the
+   * background layer works without overriding the sticky behavior.
+   * Do NOT set overflow:hidden here — the mobile drawer (.navbar-sidebar) is a
+   * child of .navbar and would be clipped to the bar height. The topo ::before
+   * is clipped by its own radial mask + the row height instead. */
+}
+/* ----- light-mode navbar palette ----- */
+/* `:not(:has(.bps-home))` keeps this OFF the homepage: that page is an
+ * always-dark design, so the masthead must stay on the dark .navbar defaults
+ * above even when the user's mode is light. Everywhere else, light mode re-tints
+ * the bar. (Paired with the same exclusion on the topo ::before below.) */
+html[data-theme='light']:not(:has(.bps-home)) .navbar {
+  --bps-nav-bg: #f4f6f9;           /* matches the docs paper-light surface */
+  --bps-nav-border: #dfe3e8;
+  --bps-nav-ink: #0d1117;
+  --bps-nav-ink-soft: #3a444f;
+  --bps-nav-hover: #0057a8;
+  --bps-nav-sep: #9aa3ad;
+  --bps-nav-divider: #dfe3e8;
+  --bps-nav-surface: #ffffff;
+  --bps-nav-surface-hover: #ffffff;
+  --bps-nav-rule: #dfe3e8;
+  --bps-nav-rule-hover: #c7ccd3;
+  --bps-nav-key-bg: #f4f6f9;
+  --bps-nav-muted: #6b7480;
+  --bps-nav-error: #c0392b;        /* inline error text, light (darker for contrast on light surface) */
+  /* --bps-nav-on-accent stays #fff — light accent (#0057a8) carries white text */
+}
+/* Faint topo-line graphic bleeding behind the masthead (prototype .topo-bg):
+ * sits left of center, masked to fade at all edges so it doesn't terminate
+ * abruptly. Inline SVG data-URI; behind the nav content (which Docusaurus
+ * positions above via its own stacking). */
+.navbar::before {
+  content: '';
+  position: absolute;
+  top: 0; bottom: 0;
+  left: 0;
+  width: 760px; max-width: 70%;
+  transform: translateX(18%);
+  z-index: 0;
+  pointer-events: none;
+  opacity: 0.5;
+  background-repeat: no-repeat;
+  background-position: center;
+  background-size: cover;
+  -webkit-mask-image: radial-gradient(ellipse at center, #000 30%, transparent 80%);
+          mask-image: radial-gradient(ellipse at center, #000 30%, transparent 80%);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 720 76' preserveAspectRatio='xMidYMid slice'%3E%3Cg fill='none' stroke='%23e8eef6' stroke-opacity='0.16'%3E%3Cpath d='M 0,-10 C 80,4 180,12 280,16 C 380,20 480,18 600,8 C 660,2 700,-4 720,-10'/%3E%3Cpath d='M 0,18 C 100,28 200,38 320,44 C 440,50 560,42 660,32 C 690,28 710,24 720,22'/%3E%3Cpath stroke-opacity='0.28' stroke-width='1.4' d='M 0,38 C 120,52 220,64 360,70 C 500,74 620,66 720,54'/%3E%3Cpath d='M 0,62 C 100,78 220,86 380,86 C 540,86 640,78 720,68'/%3E%3Cpath d='M 0,86 C 140,90 260,96 400,98 C 540,100 660,96 720,90'/%3E%3C/g%3E%3Cg%3E%3Ccircle cx='360' cy='40' r='2.5' fill='%239CA3AF'/%3E%3Ccircle cx='360' cy='40' r='7' fill='none' stroke='%239CA3AF' stroke-opacity='0.4' stroke-width='0.7'/%3E%3C/g%3E%3C/svg%3E");
+}
+/* keep the navbar content above the topo layer; match the prototype masthead's
+ * asymmetric padding (40px left of the logo, 32px right). Docusaurus's own
+ * .navbar padding is symmetric, so neutralize it and pad the inner row. */
+.navbar { padding-left: 0; padding-right: 0; }
+.navbar__inner {
+  position: relative;
+  z-index: 1;
+  padding: 0 32px 0 40px;
+}
+/* Light-mode topo: re-tint the lines to a faint blue-gray that reads on the
+ * light bar (the dark default uses near-white lines at low opacity).
+ * Excluded on the homepage (always-dark masthead) — see the palette block. */
+html[data-theme='light']:not(:has(.bps-home)) .navbar::before {
+  opacity: 0.7;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 720 76' preserveAspectRatio='xMidYMid slice'%3E%3Cg fill='none' stroke='%2398a9c0' stroke-opacity='0.5'%3E%3Cpath d='M 0,-10 C 80,4 180,12 280,16 C 380,20 480,18 600,8 C 660,2 700,-4 720,-10'/%3E%3Cpath d='M 0,18 C 100,28 200,38 320,44 C 440,50 560,42 660,32 C 690,28 710,24 720,22'/%3E%3Cpath stroke-opacity='0.7' stroke-width='1.4' d='M 0,38 C 120,52 220,64 360,70 C 500,74 620,66 720,54'/%3E%3Cpath d='M 0,62 C 100,78 220,86 380,86 C 540,86 640,78 720,68'/%3E%3Cpath d='M 0,86 C 140,90 260,96 400,98 C 540,100 660,96 720,90'/%3E%3C/g%3E%3Cg%3E%3Ccircle cx='360' cy='40' r='2.5' fill='%237088a6'/%3E%3Ccircle cx='360' cy='40' r='7' fill='none' stroke='%237088a6' stroke-opacity='0.5' stroke-width='0.7'/%3E%3C/g%3E%3C/svg%3E");
+}
+/* no default brand link (we render our own lockup as the first item) */
+.navbar__brand:empty { display: none; }
+/* right group = the prototype's "nav-mini" cluster: search · Get Started ·
+ * GitHub↗ · theme toggle, baseline-aligned with comfortable gaps. */
+.navbar__items--right {
+  gap: 18px;
+  align-items: center;
+}
+/* keep right-side controls legible on the bar (both themes) */
+.navbar .clean-btn,
+.navbar__toggle {
+  color: var(--bps-nav-ink-soft);
+}
+
+/* Color-mode toggle hover: match the account login icon's blue-hued treatment
+ * (background tint + blue glyph) so the icon controls feel like one family.
+ * Mirrors .iconLink:hover in BpsAccount.module.css. Applies in BOTH the desktop
+ * bar AND the mobile hamburger drawer (.navbar-sidebar) so the toggle hover is
+ * consistent across the two navs. */
+/* Target the toggle BUTTON directly (its hashed class is `toggleButton_*`) so
+ * the rule matches in BOTH the desktop bar and the mobile drawer (which renders
+ * the same toggle markup when opened). Both selectors are scoped under an
+ * ancestor (.navbar / .navbar-sidebar) so they reach specificity (0,3,0) and
+ * win over Infima's own `.toggleButton:hover { background: emphasis-200 }`
+ * (0,2,0) regardless of stylesheet source order — Infima's copy is concatenated
+ * after custom.css, so a bare (0,2,0) selector here would lose the tie. */
+.navbar [class*='toggleButton']:hover,
+.navbar-sidebar [class*='toggleButton']:hover {
+  background: color-mix(in srgb, var(--bps-nav-hover) 14%, transparent);
+  color: var(--bps-nav-hover);
+}
+
+/* The homepage is an always-dark design (the .bps-home body and the masthead
+ * are dark in both color modes). Rather than force the global color mode to
+ * dark there — which mutates shared, persisted state and is brittle across SPA
+ * navigation — we keep the page on whatever mode the user has and just pin the
+ * one remaining mode-following element (the footer) dark via CSS, and hide the
+ * now-pointless toggle. Scoped via `html:has(.bps-home)` so it's homepage-only
+ * (other custom pages like /account share the plugin-pages html class, so that
+ * can't be the hook). The footer dark-pin lives in the footer section below. */
+html:has(.bps-home) .navbar [class*='colorModeToggle'],
+html:has(.bps-home) .navbar-sidebar [class*='colorModeToggle'] {
+  display: none;
+}
+
+/* ── Right-nav item ordering (desktop) ──────────────────────────────────────
+ * Docusaurus renders right config items first, then appends
+ * <NavbarColorModeToggle> after them in the DOM. We want the account icon at
+ * the FAR right: [...links] → colorModeToggle → account icon.
+ * Use flex `order` to place the colorModeToggle at 1 and the account slot at 2
+ * so it renders last regardless of DOM order. All other items stay at 0.
+ * The gap:18px on .navbar__items--right gives even spacing throughout.
+ * The stable global class `bpsAccountSlot` is added by BpsAccount.js to allow
+ * targeting from global CSS without relying on the hashed CSS-module class.
+ * Desktop only — mobile hides the slot and uses the drawer instead. */
+@media (min-width: 997px) {
+  .navbar__items--right > [class*='colorModeToggle'] {
+    order: 1;
+  }
+  .navbar__items--right > .bpsAccountSlot {
+    order: 2;
+  }
+}
+
+/* ----- brand lockup — matches the prototype .masthead .lockup ----- */
+.bpsBrand {
+  display: inline-flex;
+  align-items: center;
+  column-gap: 18px;
+  text-decoration: none;
+}
+/* logo renders at 44px but the wrapper holds the nominal row height so the SVG
+ * can overflow without growing the bar (prototype .lockup .pulse). */
+.bpsBrand__pulseWrap {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 50px;
+  height: 40px;
+  color: #3994ff;
+  flex: 0 0 auto;
+  overflow: visible;
+}
+.bpsBrand__pulse {
+  position: absolute;
+  top: 50%; left: 50%;
+  transform: translate(-50%, -50%);
+  height: 44px; width: auto;
+  display: block;
+}
+/* Light mode: swap the butterfly fill to the inverted (dark-core) gradient so
+ * the halftone dots stay legible against the pale bar. Excluded on the homepage
+ * (always-dark masthead) so the logo keeps its dark-bar gradient there — same
+ * `:not(:has(.bps-home))` exclusion as the navbar palette above. */
+html[data-theme='light']:not(:has(.bps-home)) .bpsBrand__pulse { fill: url(#bsky-grad-light); }
+html[data-theme='light']:not(:has(.bps-home)) .bpsBrand__pulse circle { fill: url(#bsky-grad-light); }
+.bpsBrand,
+.bpsBrand:hover { text-decoration: none; }
+.bpsBrand__word {
+  display: inline-flex;
+  flex-direction: column;
+  line-height: 1;
+  -webkit-font-smoothing: subpixel-antialiased;
+}
+.bpsBrand__full { display: flex; flex-direction: column; }
+/* Official Bluesky wordmark (SVG). Sized by height; width follows the 116×31
+ * aspect. align-self:flex-start keeps the flex column from stretching it wide.
+ * Inherits nav ink via currentColor. */
+.bpsBrand__w1 {
+  display: block;
+  align-self: flex-start;
+  height: 17px; width: auto;
+  color: var(--bps-nav-ink);
+}
+/* "Protocol Services" — the Inter UI stack, but preferring Helvetica Neue where
+ * the OS has it (matches Bluesky's own wordmark setting). */
+.bpsBrand__w2 {
+  margin-top: 2px;
+  font-family: 'Helvetica Neue', var(--ifm-font-family-base);
+  font-size: 11px; font-weight: 500; letter-spacing: 0.02em; color: var(--bps-nav-ink-soft);
+}
+
+/* ----- mono nav-mini links (Get Started, GitHub) — prototype's .nav-mini a:
+ * uppercase JetBrains mono, soft ink, blue on hover. ----- */
+.bpsNav--link {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-family: var(--bps-docs-mono);
+  font-size: 11px; font-weight: 700;
+  letter-spacing: 0.06em; text-transform: uppercase;
+  color: var(--bps-nav-ink-soft);
+  text-decoration: none;
+}
+.bpsNav--link:hover { color: var(--bps-nav-hover); text-decoration: none; }
+/* selected state — current route sits on this link's page (set by NavCustomLink) */
+.bpsNav--link--active { color: var(--bps-nav-ink); }
+/* middot separator between the mono links (prototype .nav-mini .sep) — a real
+ * flex child so the right group's even gaps sit on both sides. */
+.bpsNav__sep {
+  color: var(--bps-nav-sep);
+  font-weight: 700;
+  user-select: none;
+  line-height: 1;
+}
+/* vertical divider bracketing the link cluster (prototype live-pill /
+ * version-stamp borders). */
+.bpsNav__divider {
+  width: 1px;
+  align-self: stretch;
+  margin: 14px 0;
+  background: var(--bps-nav-divider);
+}
+/* Glyph face of an icon link (Blog). Hidden on desktop, where the mono label
+ * is shown instead; the mobile block below swaps them. Both faces are always in
+ * the markup — see NavCustomLink. */
+.bpsNav__navIcon {
+  display: none;
+  /* Matches the 18px sparkle beside it. The news glyph is a thin outline with
+   * interior detail, so unlike the closed-shape megaphone it replaced it does
+   * not read heavy at that size — and its three text lines need the room to
+   * stay separated. See src/components/Navbar/NewsIcon.js. */
+  width: 18px;
+  height: 18px;
+  flex: 0 0 auto;
+}
+
+/* outbound-arrow icon on external links (GitHub) */
+.bpsNav__extIcon {
+  width: 11px; height: 11px;
+  flex: 0 0 auto;
+  opacity: 0.8;
+  transform: translateY(-0.5px);
+}
+
+/* ----- Algolia search box on the masthead (token-driven, both themes) ----- */
+.navbar .DocSearch-Button {
+  background: var(--bps-nav-surface);
+  border: 1px solid var(--bps-nav-rule);
+  border-radius: var(--bps-radius-md);
+  height: 36px;
+  /* balanced internal spacing: icon · placeholder ······ keys */
+  padding: 0 8px 0 12px;
+  margin: 0;
+  min-width: 200px;
+}
+.navbar .DocSearch-Button:hover {
+  background: var(--bps-nav-surface-hover);
+  box-shadow: none;
+  border-color: var(--bps-nav-rule-hover);
+}
+.navbar .DocSearch-Button .DocSearch-Search-Icon { color: var(--bps-nav-muted); width: 16px; height: 16px; }
+/* let the placeholder take the slack so the keys sit flush right. Inter for the
+ * "Search" text. */
+.navbar .DocSearch-Button-Placeholder {
+  color: var(--bps-nav-muted);
+  padding: 0 12px 0 8px;
+  margin-right: auto;
+  font-family: var(--ifm-font-family-base);
+  font-size: 13px;
+}
+.navbar .DocSearch-Button-Keys {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  min-width: 0;
+}
+.navbar .DocSearch-Button-Key {
+  /* normalize the key cap: DocSearch ships an asymmetric bottom padding + a
+   * top:-1px nudge tuned for its own font, which misaligns the ⌘/K glyphs in
+   * JetBrains Mono. Reset to an evenly-centered cap. */
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px; height: 18px;
+  padding: 0;
+  top: 0;
+  margin: 0;
+  background: var(--bps-nav-key-bg);
+  border: 1px solid var(--bps-nav-rule);
+  border-radius: var(--bps-radius-sm);
+  box-shadow: none;
+  color: var(--bps-nav-muted);
+  font-family: var(--bps-docs-mono);
+  font-size: 11px;
+  line-height: 1;
+}
+
+/* ----- Algolia DocSearch modal (the search popover) — align its CSS variables
+ * to our design tokens. DocSearch is fully --docsearch-* driven, so theming via
+ * these vars is the idiomatic approach. --docsearch-primary-color already
+ * inherits --ifm-color-primary via Docusaurus.
+ * IMPORTANT: @docsearch/css ships its own defaults (on :root and
+ * html[data-theme=dark]) that are concatenated AFTER custom.css, so bare :root
+ * overrides LOSE on source order. We use higher-specificity selectors
+ * (html[data-theme='light'] and html[data-theme='dark']:root) to win. ----- */
+html[data-theme='light'] {
+  --docsearch-modal-background: var(--bps-paper-light);
+  --docsearch-searchbox-background: #ffffff;
+  --docsearch-searchbox-focus-background: #ffffff;
+  --docsearch-hit-background: #ffffff;
+  --docsearch-hit-color: #2b333d;
+  --docsearch-text-color: #1a2530;
+  --docsearch-muted-color: #6b7480;
+  --docsearch-container-background: rgba(13, 17, 23, 0.4);
+  --docsearch-modal-shadow: 0 16px 48px rgba(13, 17, 23, 0.18);
+  --docsearch-searchbox-shadow: inset 0 0 0 2px var(--ifm-color-primary);
+  --docsearch-key-gradient: linear-gradient(-225deg, #f4f6f9, #ffffff);
+  --docsearch-key-shadow: none;
+  --docsearch-footer-background: var(--bps-paper-light);
+  --docsearch-footer-shadow: 0 -1px 0 #dfe3e8;
+}
+html[data-theme='dark']:root {
+  --docsearch-modal-background: #161c26;
+  --docsearch-searchbox-background: #0d1117;
+  --docsearch-searchbox-focus-background: #0d1117;
+  --docsearch-hit-background: #1c2532;
+  --docsearch-hit-color: #c4ccd8;
+  --docsearch-text-color: #f0f6fc;
+  --docsearch-muted-color: #8893a2;
+  --docsearch-container-background: rgba(2, 4, 8, 0.6);
+  --docsearch-modal-shadow: 0 16px 48px rgba(0, 0, 0, 0.5);
+  --docsearch-key-gradient: linear-gradient(-225deg, #161c26, #0d1117);
+  --docsearch-footer-background: #161c26;
+  --docsearch-footer-shadow: 0 -1px 0 #1f2733;
+}
+/* Inter for the modal UI; the search input + hit titles align with the docs. */
+.DocSearch-Modal { font-family: var(--ifm-font-family-base); border-radius: var(--bps-radius-xl); }
+.DocSearch-Form { border-radius: var(--bps-radius-lg); }
+.DocSearch-Hit a { border-radius: var(--bps-radius-lg); }
+/* hint key caps use the same Atkinson mono treatment as the nav ⌘K caps */
+.DocSearch-Commands-Key,
+.DocSearch-Hit-action .DocSearch-Hit-Select-Icon { font-family: var(--bps-docs-mono); }
+
+/* ----- mobile (≤996px): compact bar = hamburger · logo lockup (left) … search
+ * icon (right). The mono links, dividers, separator, and theme toggle drop out
+ * of the bar and live in the hamburger drawer instead.
+ * NOTE: this block is placed AFTER the base search-box styles above so its
+ * rules win at equal specificity (source order) — otherwise the base
+ * border-radius:6px would override the circular 50% here. ----- */
+@media (max-width: 996px) {
+  .navbar__inner { padding: 0 14px; }
+
+  /* smaller hamburger, with breathing room before the lockup */
+  .navbar__toggle { padding: 4px; margin-right: 12px; }
+  .navbar__toggle svg { width: 22px; height: 22px; }
+
+  /* full lockup stays, tightened; pulse a touch smaller to save width */
+  .bpsBrand { column-gap: 12px; }
+  .bpsBrand__pulseWrap { width: 40px; height: 34px; }
+  .bpsBrand__pulse { height: 36px; }
+  .bpsBrand__w1 { height: 14px; }
+  .bpsBrand__w2 { font-size: 10px; }
+
+  /* hide the bar's link cluster + dividers + separator + toggle + locale picker
+   * — these move to the drawer. Search stays (as an icon). */
+  .navbar__items--right > .bpsNav--link:not(.bpsNav--iconLink),
+  .navbar__items--right > .bpsNav__divider,
+  .navbar__items--right > .bpsNav__sep,
+  .navbar__items--right > [class*='colorModeToggle'],
+  .navbar__items--right > [class*='toggle_'],
+  .navbar__items--right > .dropdown:has(> .bpsMainMenuLocale) {
+    display: none;
+  }
+  /* Four controls now live in the mobile bar: search icon, Ask AI, Blog, and
+   * the account slot. At 10px the cluster plus the brand lockup overran a
+   * 375px viewport, so the gap tightens as the bar fills up. If more controls
+   * are ever added here, the next lever is the lockup's second line
+   * (.bpsBrand__w2), not a smaller gap. */
+  .navbar__items--right { gap: 8px; }
+
+  /* Icon links (Blog) stay in the bar and take the same 2rem circular hit area
+   * as the search, Ask AI and account controls beside them, so the compact bar
+   * reads as one row of icon buttons. Mirrors AskAiButton.module.css. */
+  .navbar__items--right > .bpsNav--iconLink {
+    justify-content: center;
+    width: 2rem;
+    height: 2rem;
+    border-radius: 50%;
+    transition:
+      background var(--ifm-transition-fast),
+      color 0.15s ease;
+    -webkit-tap-highlight-color: color-mix(
+      in srgb,
+      var(--bps-nav-hover) 14%,
+      transparent
+    );
+  }
+  .navbar__items--right > .bpsNav--iconLink:hover {
+    background: color-mix(in srgb, var(--bps-nav-hover) 14%, transparent);
+  }
+  /* Swap the mono label for the glyph. The link keeps aria-label/title, so its
+   * accessible name survives the swap. */
+  .navbar__items--right > .bpsNav--iconLink .bpsNav__label { display: none; }
+  .navbar__items--right > .bpsNav--iconLink .bpsNav__navIcon { display: block; }
+
+  /* collapse the search box to a circular icon button (placeholder + keys hidden) */
+  .navbar [class*='navbarSearchContainer'] {
+    width: 2rem;
+    /* Docusaurus's default pins the search container `position: absolute; right`
+     * on mobile (assuming it's the only right-side control). With the account
+     * icon now also in the bar, the absolute search overlapped it. Put search
+     * back in normal flow so it sits beside the account slot via the flex gap. */
+    position: initial;
+  }
+  .navbar .DocSearch-Button {
+    min-width: 0;
+    width: 2rem; height: 2rem;
+    padding: 0;
+    border-radius: 50%;            /* circular icon button */
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    /* Match the account login icon-button: no border/fill, soft-ink glyph,
+     * blue tint + blue glyph on hover, blue tap highlight. */
+    background: none;
+    border: none;
+    color: var(--bps-nav-ink-soft);
+    transition: background var(--ifm-transition-fast), color 0.15s ease;
+    -webkit-tap-highlight-color: color-mix(in srgb, var(--bps-nav-hover) 14%, transparent);
+  }
+  .navbar .DocSearch-Button:hover {
+    background: color-mix(in srgb, var(--bps-nav-hover) 14%, transparent);
+  }
+  .navbar .DocSearch-Button:hover .DocSearch-Search-Icon,
+  .navbar .DocSearch-Button:focus-visible .DocSearch-Search-Icon {
+    color: var(--bps-nav-hover);
+  }
+  .navbar .DocSearch-Button-Placeholder,
+  .navbar .DocSearch-Button-Keys { display: none; }
+  /* the icon sits in a Container span; zero its margins and center it */
+  .navbar .DocSearch-Button .DocSearch-Button-Container { margin: 0; }
+  /* Glyph inherits the soft-ink color (set on the button) → matches login icon. */
+  .navbar .DocSearch-Button .DocSearch-Search-Icon {
+    margin: 0;
+    display: block;
+    color: var(--bps-nav-ink-soft);
+  }
+
+  /* When the drawer is open, hide the bar's right group (the search icon) so it
+   * can't peek through in the strip beside the drawer. */
+  .navbar-sidebar--show .navbar__items--right { visibility: hidden; }
+}
+
+/* ----- mobile hamburger drawer: it inherits the navbar background, so drive
+ * its menu colors from the same nav tokens (legible in both themes). ----- */
+.navbar-sidebar {
+  --ifm-menu-color: var(--bps-nav-ink-soft);
+  --ifm-menu-color-active: var(--bps-nav-ink);
+  /* The drawer is fixed but nested in .navbar (z-index:200) with z:auto, so the
+   * bar's own content (search icon, etc.) bleeds over the drawer's top corner.
+   * Lift the drawer above the bar content so it fully covers the masthead. */
+  z-index: 300;
+}
+.navbar-sidebar .menu__link,
+.navbar-sidebar .menu__list-item-collapsible > .menu__link {
+  color: var(--bps-nav-ink-soft);
+}
+/* Mirror the desktop sidebar's type split:
+ *  - MAIN menu (level-1 category labels + top-level links, incl. our custom
+ *    NavCustomLink items) → sans, larger, semi-bold
+ *  - SUBMENU (level-2 children) → sans, slightly smaller, medium weight */
+.navbar-sidebar__items .menu__list > .menu__list-item > .menu__link,
+.navbar-sidebar__items .menu__list > .menu__list-item > .menu__list-item-collapsible > .menu__link {
+  font-family: var(--ifm-font-family-base);
+  font-size: var(--bps-text-base); font-weight: 600;
+  letter-spacing: -0.005em; text-transform: none;
+}
+/* nested (submenu) items → slightly smaller + medium weight */
+.navbar-sidebar__items .menu__list .menu__list .menu__link {
+  font-family: var(--ifm-font-family-base);
+  font-size: var(--bps-text-sm); font-weight: 500;
+  letter-spacing: normal; text-transform: none;
+}
+
+/* drawer header: lockup on the left, theme toggle just to its right, close at
+ * the far right. */
+.navbar-sidebar__brand {
+  gap: 12px;
+  box-shadow: none;
+  border-bottom: 1px solid var(--bps-nav-border);
+}
+/* lockup pushed left; toggle + close sit together at the far right */
+.navbar-sidebar__brand .bpsBrand { margin-right: auto; }
+.navbar-sidebar__brand .bpsDrawerToggle { margin: 0; }
+/* smaller close (X) button, snug against the toggle */
+.navbar-sidebar__close { padding: 4px; margin-left: 0; }
+.navbar-sidebar__close svg { width: 18px; height: 18px; }
+/* The standalone locale switcher is kept out of the drawer's main menu list —
+ * it's surfaced inside the Documentation group / docs sidebar instead — by not
+ * rendering it there at all (the `bpsMainMenuLocale` marker is honored by the
+ * localeDropdown wrapper in src/theme/NavbarItem/ComponentTypes.js, so this
+ * class is now a bar-only marker as well as a style hook). It used to be
+ * hidden here with
+ * `.menu__list-item:has(> .bpsMainMenuLocale)`, which quietly stopped matching
+ * when Docusaurus wrapped mobile dropdown links in
+ * `.menu__list-item-collapsible`, leaving a duplicate "Languages" row on the
+ * homepage. Don't reintroduce a structural selector for this. */
+/* Desktop top-bar locale switcher as an icon-only button: the current-locale
+ * label ("English" / "日本語") is a bare text node after the icon, so collapse
+ * it with font-size:0. The link isn't natively flex, so make it an explicit
+ * inline-flex box to keep the icon centered once the text is gone, and drop
+ * the icon's trailing margin. Scoped to the navbar variant (`.navbar__link`);
+ * the mobile drawer copy uses `.menu__link` and keeps its label. */
+/* The dropdown wrapper is display:block and taller than the icon-only link,
+ * which leaves the link sitting near its top (other masthead links center
+ * fine because they're direct flex children of the right group; this one is
+ * wrapped a level deeper). Make the wrapper center its link. Desktop only —
+ * on mobile the picker is hidden from the bar (same specificity, so this
+ * `display:flex` would otherwise win on source order and unhide it). */
+@media (min-width: 997px) {
+  .navbar__items--right .dropdown:has(> .bpsMainMenuLocale) {
+    display: flex;
+    align-items: center;
+  }
+}
+.navbar__link.bpsMainMenuLocale {
+  display: inline-flex;
+  align-items: center;
+  font-size: 0;
+}
+.navbar__link.bpsMainMenuLocale svg {
+  margin-right: 0;
+}
+/* Neutral hover (matches the color-mode toggle / other controls), not the
+ * default blue link-hover. */
+.navbar__link.bpsMainMenuLocale:hover {
+  color: var(--bps-nav-ink-soft);
+}
+.navbar-sidebar .menu__link:hover,
+.navbar-sidebar .menu__link--active,
+.navbar-sidebar .menu__list-item-collapsible:hover {
+  color: var(--bps-nav-ink);
+  background: color-mix(in srgb, var(--bps-nav-ink) 7%, transparent);
+}
+/* caret carets: invert only on the dark bar (they're dark glyphs by default,
+ * which already read on the light bar). */
+html[data-theme='dark'] .navbar-sidebar .menu__link--sublist-caret::after,
+html[data-theme='dark'] .navbar-sidebar .menu__caret::before {
+  filter: invert(1) brightness(1.6);
+}
+/* small section label for the docs links surfaced on non-docs routes */
+.navbar-sidebar .bpsDocsMenuHeading {
+  margin-top: 6px;
+  padding: 8px 12px 4px;
+  font-size: 11px; font-weight: 700;
+  letter-spacing: 0.08em; text-transform: uppercase;
+  color: var(--bps-nav-muted);
+}
+
+/* =====================================================================
+ * DOCS READING SURFACE — layout & rhythm (§2)
+ * ===================================================================== */
+
+/* Cap the prose MEASURE (~46rem ≈ 75-90 chars) by limiting the article's
+ * direct children, NOT the container — so full-bleed blocks (the docs hero)
+ * can still span the whole content column. The container itself stays full
+ * width within the 3-col shell. */
+.theme-doc-markdown.markdown > * { max-width: 46rem; }
+/* let code blocks use a touch more width than prose */
+.theme-doc-markdown.markdown > .theme-code-block,
+.theme-doc-markdown.markdown > pre { max-width: 52rem; }
+/* Tables render as direct <table> children (no .table-wrapper), so the 46rem
+ * measure cap above would squeeze them. Let them fill the content column and
+ * govern their own width — their own max-width:100% + overflow-x:auto handles
+ * wider content by scrolling. */
+.theme-doc-markdown.markdown > table { max-width: 100%; }
+/* the docs index hero breaks out of the measure to fill the column and bleed
+ * over the column's horizontal padding (measured 16px = --ifm-spacing-horizontal). */
+.theme-doc-markdown.markdown > .bpsDocHero { max-width: none; }
+/* the How It Works page body is one full-bleed component that manages its own
+ * measure (beats cap at 1100px in how-it-works.css) — exempt it like the hero. */
+.theme-doc-markdown.markdown > .bps-hiw { max-width: none; }
+
+/* Breadcrumb → mono, natural case, slash-separated, tracked. Docusaurus
+ * renders breadcrumbs as .breadcrumbs > .breadcrumbs__item > a/span, with a
+ * leading Home item carrying an icon. */
+.breadcrumbs { font-family: var(--bps-docs-mono); }
+.breadcrumbs__link {
+  font-size: var(--bps-text-xs); letter-spacing: 0.02em;
+  background: transparent; padding: 2px 4px;
+  border-radius: var(--bps-radius-sm);
+}
+/* Hide the Home item (icon link), but keep a leading slash before the first
+ * real crumb so the path still reads "/ get started / ...". */
+.breadcrumbs__item:first-child { display: none; }
+.breadcrumbs__item:nth-child(2)::before {
+  content: '/'; opacity: 0.5; margin-right: 2px;
+}
+/* slash separator between the remaining crumbs */
+.breadcrumbs__item:not(:last-child)::after {
+  content: '/'; opacity: 0.5; margin: 0 2px; background: none;
+  width: auto; height: auto; transform: none;
+}
+.breadcrumbs__item--active .breadcrumbs__link { color: var(--ifm-color-primary); background: transparent; }
+/* Hide breadcrumbs on docs index/landing pages (those with a DocsHero) — the
+ * hero is the page's entry point there, so the breadcrumb is redundant. */
+.docItemContainer:has(.bpsDocHero) .theme-doc-breadcrumbs,
+[class*='docItemContainer']:has(.bpsDocHero) .theme-doc-breadcrumbs {
+  display: none;
+}
+/* On hero pages, hide the Layout-rendered mobile "On this page" dropdown (a
+ * direct child of <article>, above the hero) — these pages instead render their
+ * own <DocItemTOCMobile/> inside the content, just beneath the hero. The
+ * in-content one lives inside .markdown, so `article > ` only matches the
+ * original. */
+article:has(.bpsDocHero) > .theme-doc-toc-mobile {
+  display: none;
+}
+/* Breathing room around the in-content TOC on hero pages: exactly 1.5rem above
+ * and below. The hero carries its own margin-bottom: 2rem, so when the TOC
+ * directly follows it, drop the hero's bottom margin and let the TOC's own
+ * margin-top own the gap (otherwise they stack to ~3.5rem). */
+.markdown > .bpsDocHero:has(+ .theme-doc-toc-mobile) { margin-bottom: 0; }
+.markdown > .theme-doc-toc-mobile {
+  margin-top: var(--bps-space-3xl);
+  margin-bottom: var(--bps-space-3xl);
+}
+
+/* Right-hand TOC: quiet it. */
+.table-of-contents { font-size: var(--bps-text-md); }
+.table-of-contents__left-border { border-left-color: var(--ifm-toc-border-color); }
+.table-of-contents__link { color: var(--ifm-color-emphasis-700); line-height: 1.5; }
+.table-of-contents__link--active,
+.table-of-contents__link:hover {
+  color: var(--ifm-color-primary);
+}
+/* a small mono label feel for the "On this page" heading if present */
+.table-of-contents > li > .table-of-contents__link { letter-spacing: -0.005em; }
+
+/* Vertical rhythm: even spacing between blocks. */
+.markdown > :where(p, ul, ol, pre, blockquote, .theme-admonition, .table-wrapper) {
+  margin-bottom: 1.15rem;
+}
+.markdown > :where(h2, h3, h4) { margin-top: 2rem; }
+
+/* Heading anchor links: muted, accent on hover (Docusaurus .hash-link). */
+.markdown .hash-link { color: var(--ifm-color-emphasis-400); opacity: 0; }
+.markdown :hover > .hash-link { opacity: 1; }
+.markdown .hash-link:hover { color: var(--ifm-color-primary); }
+
+/* =====================================================================
+ * DOCS READING SURFACE — content components (§3)
+ * ===================================================================== */
+
+/* Inline code → mono token pill. This IS code, so it uses the code font
+ * (--ifm-font-family-monospace = JetBrains), not the UI mono (Atkinson).
+ * No border — the tinted background alone carries the pill. */
+.markdown :not(pre) > code {
+  font-family: var(--ifm-font-family-monospace);
+  font-size: 0.86em;
+  padding: 1px 5px; border-radius: var(--bps-radius-sm);
+  background: var(--ifm-color-emphasis-200);
+  border: 0;
+}
+
+/* Prose links: blue, low-contrast underline that strengthens on hover.
+ * Excludes .bpsDocCard (the DocsCardGrid card link — a stable global class,
+ * since the CSS-module class is hashed and can't be matched by name here),
+ * .table-of-contents__link (the in-content mobile TOC on hero pages renders
+ * inside .markdown, so its links would otherwise pick up the prose underline),
+ * and links inside .bps-hiw (the how-it-works page is a doc, so its component
+ * renders inside .markdown, but it draws its own border-bottom underlines —
+ * this rule would double-underline them), and .bpsJetstreamCta (the live
+ * widget's footer CTA is a button-style bar, not prose). */
+.markdown
+  a:not(.bpsDocCard):not(.hash-link):not(.table-of-contents__link):not(
+    .bps-hiw a
+  ):not(.bpsJetstreamCta) {
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  text-decoration-color: color-mix(in srgb, var(--ifm-color-primary) 35%, transparent);
+}
+.markdown
+  a:not(.bpsDocCard):not(.hash-link):not(.table-of-contents__link):not(
+    .bps-hiw a
+  ):not(.bpsJetstreamCta):hover {
+  text-decoration-color: var(--ifm-color-primary);
+}
+
+/* Admonitions → bordered card, left accent rule, mono "// label" header.
+ * Docusaurus markup: .theme-admonition.alert.alert--<type> with a
+ * .admonitionHeading. We override per Infima alert variant. */
+.theme-admonition {
+  position: relative;
+  border: 1px solid var(--ifm-color-emphasis-300);
+  border-radius: var(--bps-radius-md);
+  background: var(--ifm-color-emphasis-100);
+  /* per-type accent, defaulting to the primary; overridden per variant below */
+  --bps-admon-accent: var(--ifm-color-primary);
+}
+/* Left accent bar as a ::before so it sits flush inside the 5px radius rather
+ * than a square-cornered border-left. Offset by -1px on top/left/bottom to
+ * cover the 1px card border and align with the rounded corner. */
+.theme-admonition::before {
+  content: '';
+  position: absolute;
+  top: -1px; left: -1px; bottom: -1px;
+  width: 5px;
+  background-color: var(--bps-admon-accent);
+  border-radius: var(--bps-radius-md) 0 0 var(--bps-radius-md);
+}
+/* The heading class is hashed by Docusaurus (admonitionHeading_xxxx), so match
+ * it by substring rather than literal class. */
+.theme-admonition [class*='admonitionHeading_'] {
+  font-family: var(--bps-docs-mono);
+  font-size: var(--bps-text-2xs); font-weight: 700;
+  letter-spacing: 0.06em; text-transform: uppercase;
+}
+/* Hide the default Docusaurus admonition icon — the design uses a mono "//"
+ * marker instead (the icon span is also hashed). */
+.theme-admonition [class*='admonitionIcon_'] { display: none; }
+/* prefix the heading text with a mono comment marker */
+.theme-admonition [class*='admonitionHeading_']::before { content: '// '; opacity: 0.7; }
+/* per-type accent (tip=green, warning/caution=amber, danger=red, note/info=blue).
+ * Drives both the ::before accent bar (via --bps-admon-accent) and the label. */
+.theme-admonition.alert--success { --bps-admon-accent: #2e9e57; }
+.theme-admonition.alert--success [class*='admonitionHeading_'] { color: #2e9e57; }
+.theme-admonition.alert--warning { --bps-admon-accent: #c98a14; }
+.theme-admonition.alert--warning [class*='admonitionHeading_'] { color: #c98a14; }
+.theme-admonition.alert--danger  { --bps-admon-accent: #d0454c; }
+.theme-admonition.alert--danger [class*='admonitionHeading_'] { color: #d0454c; }
+.theme-admonition.alert--info,
+.theme-admonition.alert--secondary {
+  --bps-admon-accent: var(--ifm-color-primary);
+}
+.theme-admonition.alert--info [class*='admonitionHeading_'],
+.theme-admonition.alert--secondary [class*='admonitionHeading_'] {
+  color: var(--ifm-color-primary);
+}
+
+/* Horizontal rule → a quiet hairline divider. Infima defaults the rule to
+ * emphasis-500 (a fairly strong mid-grey); match it to the in-docs surface
+ * borders (tables, code blocks, admonitions) so the divider reads as the same
+ * hairline: emphasis-300 in light mode, and --bps-d-rule in dark (where those
+ * surfaces switch their borders to the brand dark rule, not the emphasis ramp).
+ * The only <hr> in the docs is above the "Looking for more?" note. */
+.markdown hr {
+  background-color: var(--ifm-color-emphasis-300);
+  height: 1px;
+  border: 0;
+  margin: 2rem 0;
+}
+html[data-theme='dark'] .markdown hr {
+  background-color: var(--bps-d-rule);
+}
+
+/* Footer note ("Looking for more? …") — authored as a <span class=
+ * "docsFooterNote"> in the docs source (see docs/**), so it's targeted by class
+ * rather than by `hr + p` adjacency (which would catch any future divider).
+ * A quiet secondary caption: body size, but de-emphasized via secondary ink.
+ * Light mode uses the emphasis ramp (the codebase's light-surface
+ * secondary-text convention); dark mode uses --bps-ink-soft, the brand's
+ * secondary ink for dark surfaces. */
+.markdown .docsFooterNote {
+  color: var(--ifm-color-emphasis-700);
+}
+html[data-theme='dark'] .markdown .docsFooterNote {
+  color: var(--bps-ink-soft);
+}
+
+/* Tables: light row borders, subtle header, comfy padding, scroll on overflow. */
+.markdown table {
+  display: block; width: max-content; max-width: 100%;
+  overflow-x: auto; border-collapse: collapse;
+}
+.markdown table thead { background: var(--ifm-color-emphasis-100); }
+/* Disable Infima's zebra striping — keep a flat row background. */
+.markdown table tr,
+.markdown table tr:nth-child(2n) {
+  background: transparent;
+}
+/* Thin the head/body divider (Infima defaults to a 2px thead border). */
+.markdown table thead tr { border-bottom: 1px solid var(--ifm-color-emphasis-300); }
+.markdown table th, .markdown table td {
+  border: 1px solid var(--ifm-color-emphasis-300);
+  padding: 8px 12px;
+}
+.markdown table th {
+  font-weight: 640; text-align: left;
+}
+
+/* =====================================================================
+ * DOCS READING SURFACE — code block chrome (§3)
+ * Docusaurus markup: .theme-code-block > .codeBlockTitle (optional) and a
+ * .buttonGroup holding the copy button. We restyle the container + header.
+ * ===================================================================== */
+.theme-code-block {
+  border: 1px solid var(--ifm-color-emphasis-300);
+  border-radius: var(--bps-radius-lg);
+  box-shadow: none;
+}
+/* the title bar (shown when a code block has a title="...") — code chrome, so
+ * it uses the code font (JetBrains), matching the code it labels. */
+div[class*='codeBlockTitle_'] {
+  font-family: var(--ifm-font-family-monospace);
+  font-size: var(--bps-text-xs); letter-spacing: 0.02em;
+  background: var(--ifm-color-emphasis-100);
+  border-bottom: 1px solid var(--ifm-color-emphasis-300);
+}
+/* copy button → quieter */
+.theme-code-block button[class*='copyButton_'] {
+  font-family: var(--ifm-font-family-monospace);
+  font-size: var(--bps-text-xs);
+}
+/* code body uses the mono stack already via --ifm-font-family-monospace */
+.theme-code-block pre code { font-size: var(--bps-text-base); line-height: 1.6; }
+
+/* =====================================================================
+ * DOCS READING SURFACE — left sidebar (§4)
+ * Scoped to .theme-doc-sidebar-menu so it never touches the navbar drawer.
+ * ===================================================================== */
+.theme-doc-sidebar-menu { font-size: var(--bps-text-base); }
+
+/* Top-level labels → sans, larger + semi-bold. Covers both collapsible
+ * CATEGORY labels and top-level LINK items (e.g. Tutorials, HTTP Reference,
+ * which are theme-doc-sidebar-item-link-level-1, not categories) so all
+ * first-level siblings share the same heading style. */
+.theme-doc-sidebar-menu > .theme-doc-sidebar-item-category-level-1 > .menu__list-item-collapsible > .menu__link,
+.theme-doc-sidebar-menu > .theme-doc-sidebar-item-link-level-1 > .menu__link {
+  font-family: var(--ifm-font-family-base);
+  font-size: var(--bps-text-base); font-weight: 500;
+  letter-spacing: -0.005em;
+  /* darker than the old emphasis-600 — aligns with the item link color so the
+   * headings don't read as low-contrast in light mode. */
+  color: var(--ifm-color-emphasis-800);
+}
+html[data-theme='dark']
+  .theme-doc-sidebar-menu > .theme-doc-sidebar-item-category-level-1 > .menu__list-item-collapsible > .menu__link,
+html[data-theme='dark']
+  .theme-doc-sidebar-menu > .theme-doc-sidebar-item-link-level-1 > .menu__link {
+  /* in dark mode keep the quieter label tone (light bg uses the darker value) */
+  color: var(--ifm-color-emphasis-600);
+}
+
+/* Items: Inter; comfortable spacing. */
+.theme-doc-sidebar-menu .menu__link {
+  line-height: 1.5; border-radius: var(--bps-radius-sm);
+}
+/* Second-level (child) items → smaller than the top-level labels but the same
+ * semi-bold weight (600), so the hierarchy reads through size, not weight:
+ * larger parents, compact children. Targeted via the explicit level-2 item
+ * class — NOT `.menu__list .menu__list`, which never matched: the
+ * .theme-doc-sidebar-menu root IS the first .menu__list, so children sit one
+ * .menu__list deep, not two. */
+.theme-doc-sidebar-menu .theme-doc-sidebar-item-link-level-2 > .menu__link {
+  font-size: var(--bps-text-sm); font-weight: 600;
+}
+
+/* Collapse/expand caret: smaller icon (1.25rem) and square off the upper/lower
+ * left corners so it sits flush against the sibling label. The caret glyph is
+ * a background-image on the button; size it via background-size. Applied across
+ * the whole drawer so the locale ("Languages") dropdown caret matches the docs
+ * category carets in both the main menu and docs-sidebar panes (the latter
+ * scoped to .theme-doc-sidebar-menu, the former not). */
+.theme-doc-sidebar-menu .menu__caret,
+.navbar-sidebar .menu__caret {
+  border-radius: 0 var(--bps-radius-sm) var(--bps-radius-sm) 0;
+}
+.theme-doc-sidebar-menu .menu__caret::before,
+.navbar-sidebar .menu__caret::before {
+  background-size: 1.25rem 1.25rem;
+}
+/* The locale ("Languages") dropdown in the primary menu draws its caret as the
+ * link's ::after (not a .menu__caret button), which Infima sizes at 2rem —
+ * oversized next to the rest. Match the 1.25rem treatment above. */
+.navbar-sidebar .menu__link--sublist-caret::after {
+  background-size: 1.25rem 1.25rem;
+}
+
+/* Active item: soft blue tint + left accent bar. The bar is a ::before
+ * pseudo-element (not an inset box-shadow) so it sits flush inside the item's
+ * border-radius rather than being clipped square at the corner.
+ *
+ * Two distinct DOM shapes get the treatment on DIFFERENT elements:
+ *   1. A LEAF link (no children) — the active <a> itself
+ *      (.menu__link--active:not(--sublist)).
+ *   2. A top-level CATEGORY on its own page — the COLLAPSIBLE WRAPPER
+ *      (.menu__list-item-collapsible--active), not the inner <a>. The wrapper
+ *      is the flex row holding both the label <a> AND the caret <button>, so
+ *      tinting it makes the whole row read as one component; tinting the inner
+ *      <a> instead (as an earlier attempt did) left the caret on its own grey
+ *      background and rounded the <a> mid-row. The --active wrapper class is
+ *      present only on the category's own page (not when a child is open), so
+ *      it's the right "you are here" signal without a separate aria guard. */
+.theme-doc-sidebar-menu .menu__link--active:not(.menu__link--sublist),
+.theme-doc-sidebar-menu .menu__list-item-collapsible--active {
+  position: relative;
+  background: color-mix(in srgb, var(--ifm-color-primary) 9%, transparent);
+  border-radius: var(--bps-radius-sm);
+}
+/* Tint Infima's hover/active background off (it ships its own greys on these),
+ * and color the label text + caret blue. */
+.theme-doc-sidebar-menu .menu__list-item-collapsible--active,
+.theme-doc-sidebar-menu .menu__list-item-collapsible--active:hover {
+  background: color-mix(in srgb, var(--ifm-color-primary) 9%, transparent);
+}
+.theme-doc-sidebar-menu .menu__link--active:not(.menu__link--sublist),
+.theme-doc-sidebar-menu .menu__list-item-collapsible--active > .menu__link {
+  color: var(--ifm-color-primary);
+  font-weight: 600;
+}
+/* A top-level LEAF (e.g. Get Started) keeps the level-1 label weight (500) when
+ * selected — active top-level CATEGORIES don't bold, so the leaf shouldn't
+ * either. The 600 above is meant for active level-2 children, not level-1. */
+.theme-doc-sidebar-menu
+  > .theme-doc-sidebar-item-link-level-1
+  > .menu__link--active {
+  font-weight: 500;
+}
+/* The category's inner <a> must stay transparent — its tint lives on the
+ * wrapper above. (The leaf active <a>, by contrast, carries its own tint, so it
+ * is deliberately NOT zeroed here.) */
+.theme-doc-sidebar-menu .menu__list-item-collapsible--active > .menu__link {
+  background: none;
+}
+/* Top-level CATEGORY label, and a top-level LEAF link (e.g. Get Started), get
+ * the primary color when selected. This needs to out-specify the level-1 label
+ * color rule above (which sets emphasis-800 / emphasis-600 in dark at
+ * specificity 0,4,1), so mirror that selector's depth and add the active class.
+ * Without this the dark-mode grey label rule wins and the active leaf reads
+ * grey instead of blue. Both themes. */
+html .theme-doc-sidebar-menu
+  > .theme-doc-sidebar-item-category-level-1
+  > .menu__list-item-collapsible--active
+  > .menu__link,
+html .theme-doc-sidebar-menu
+  > .theme-doc-sidebar-item-link-level-1
+  > .menu__link--active,
+html[data-theme='dark'] .theme-doc-sidebar-menu
+  > .theme-doc-sidebar-item-category-level-1
+  > .menu__list-item-collapsible--active
+  > .menu__link,
+html[data-theme='dark'] .theme-doc-sidebar-menu
+  > .theme-doc-sidebar-item-link-level-1
+  > .menu__link--active {
+  color: var(--ifm-color-primary);
+}
+.theme-doc-sidebar-menu .menu__link--active:not(.menu__link--sublist)::before,
+.theme-doc-sidebar-menu .menu__list-item-collapsible--active::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; bottom: 0;
+  width: 4px;
+  background-color: var(--ifm-color-primary);
+  border-radius: var(--bps-radius-sm) 0 0 var(--bps-radius-sm);
+  z-index: 1;
+}
+
+/* =====================================================================
+ * SIDEBAR — "Getting Started" path grouping (§4)
+ * The first three top-level items (Get Started, About Bluesky Content,
+ * Tutorials) form the onboarding path. They carry the bpsGsPath className
+ * (set in sidebars.js) so this survives reordering as long as the classes
+ * travel with the items. They're rendered as one cohesive, neutral-blue
+ * panel — desaturated so it reads as "grouped/quiet" rather than competing
+ * with the blue accent used for the active item — inset with side margins
+ * and rounded top/bottom corners. The bordered outline alone separates it
+ * from the reference docs below; a little breathing room beneath it is
+ * enough (no divider rule).
+ * ===================================================================== */
+.theme-doc-sidebar-menu {
+  --bps-gs-bg: #e9eef7;          /* soft slate-blue panel fill */
+  --bps-gs-border: #d3ddec;
+}
+html[data-theme='dark'] .theme-doc-sidebar-menu {
+  --bps-gs-bg: #141d2c;          /* raised, blue-tinted surface over #0d1117 */
+  --bps-gs-border: #243047;
+}
+/* Each path item is a top-level <li>; tint it and bracket it with side rules.
+ * Flatten the inter-item gap (Infima adds margin-top between siblings) so the
+ * three rows read as one continuous block. */
+.theme-doc-sidebar-menu > .bpsGsPath {
+  margin-top: 0;
+  margin-left: 6px;
+  margin-right: 10px;
+  padding: 2px 6px;
+  background: var(--bps-gs-bg);
+  border-left: 1px solid var(--bps-gs-border);
+  border-right: 1px solid var(--bps-gs-border);
+}
+/* First item: top cap (rounded corners + top rule + a little breathing room
+ * above the panel). */
+.theme-doc-sidebar-menu > .bpsGsPath--first {
+  margin-top: 6px;
+  padding-top: 6px;
+  border-top: 1px solid var(--bps-gs-border);
+  border-radius: 8px 8px 0 0;
+}
+/* Last item: bottom cap. The outline closes the panel here; just leave a gap
+ * before the reference docs below. */
+.theme-doc-sidebar-menu > .bpsGsPath--last {
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--bps-gs-border);
+  border-radius: 0 0 8px 8px;
+  margin-bottom: 1rem;
+}
+
+/* =====================================================================
+ * DOCS READING SURFACE — dark-mode brand surfaces + syntax
+ * Align code blocks, admonitions, and tables with the homepage's BPS dark
+ * palette (paper #0d1117 / paper-2 #161c26, rules #1f2733/#2a3340), and map
+ * the homepage's GitHub-dark syntax tokens onto Prism's .token.* classes.
+ * Literal hex (landing.css tokens aren't loaded on docs pages).
+ * ===================================================================== */
+html[data-theme='dark'] {
+  /* Surfaces lifted ABOVE the #0d1117 page so panels read as raised, not flush.
+   * --bps-d-surface (code body, set via Prism plain.bg in config) = #161c26;
+   * --bps-d-surface-2 (admonitions, inline code, tables, code title bar) is a
+   * touch lighter for clear definition against the page + the code body. */
+  --bps-d-surface: #161c26;
+  --bps-d-surface-2: #1c2532;
+  --bps-d-rule: #2a3340;
+  --bps-d-rule-2: #38424f;
+}
+
+/* a. Code blocks — border + title chrome (the code surface itself comes from
+ * the dark Prism theme's plain.backgroundColor (#161c26) in the config). */
+html[data-theme='dark'] .theme-code-block {
+  border-color: var(--bps-d-rule);
+}
+html[data-theme='dark'] div[class*='codeBlockTitle_'] {
+  background: var(--bps-d-surface-2);
+  border-bottom-color: var(--bps-d-rule);
+  color: #c4ccd8;
+}
+/* inline code pill (borderless, set in the base rule). */
+html[data-theme='dark'] .markdown :not(pre) > code {
+  background: var(--bps-d-surface-2);
+}
+/* The ONLY inline-code border in the design: dark-mode admonitions. There the
+ * code pill background (--bps-d-surface-2) equals the admonition background, so
+ * without a border the pill is invisible. Light mode needs no border because
+ * the code bg (emphasis-200) differs from the admonition bg (emphasis-100). */
+html[data-theme='dark'] .theme-admonition :not(pre) > code {
+  border: 1px solid var(--bps-d-rule-2);
+}
+
+/* b. Admonitions */
+html[data-theme='dark'] .theme-admonition {
+  background: var(--bps-d-surface-2);
+  border-color: var(--bps-d-rule);
+}
+
+/* c. Tables */
+html[data-theme='dark'] .markdown table thead {
+  background: var(--bps-d-surface-2);
+}
+html[data-theme='dark'] .markdown table th,
+html[data-theme='dark'] .markdown table td {
+  border-color: var(--bps-d-rule);
+}
+
+/* =====================================================================
+ * FOOTER — light/dark via tokens. Column TITLES are emphasized vs. the
+ * link ITEMS (color + weight); copyright line in Atkinson mono.
+ * ===================================================================== */
+.footer {
+  /* light defaults */
+  --bps-footer-bg: #eef1f5;
+  --bps-footer-border: #dfe3e8;
+  --bps-footer-title: var(--ifm-color-primary);  /* column headers — docs link/accent color */
+  --bps-footer-link: #26303a;      /* link items — normal text color */
+  --bps-footer-link-hover: var(--ifm-color-primary);
+  --bps-footer-copy: #8a929c;      /* copyright — de-emphasized text color */
+
+  background: var(--bps-footer-bg);
+  border-top: 1px solid var(--bps-footer-border);
+  --ifm-footer-background-color: var(--bps-footer-bg);
+  --ifm-footer-color: var(--bps-footer-link);
+  --ifm-footer-link-color: var(--bps-footer-link);
+  --ifm-footer-link-hover-color: var(--bps-footer-link-hover);
+  --ifm-footer-title-color: var(--bps-footer-title);
+}
+html[data-theme='dark'] .footer {
+  --bps-footer-bg: #0b0e13;        /* a touch deeper than the page for separation */
+  --bps-footer-border: #1f2733;
+  /* title + hover inherit var(--ifm-color-primary), which is already remapped
+   * for dark mode — no per-theme override needed. */
+  --bps-footer-link: #c4ccd8;      /* normal text color */
+  --bps-footer-copy: #6b7686;      /* de-emphasized */
+}
+/* Homepage footer is always dark (the page is an always-dark design — see the
+ * color-mode note in the navbar section). Pin the dark footer tokens regardless
+ * of the active color mode. Unlike the [data-theme='dark'] block, we must also
+ * set --bps-footer-title / -link-hover explicitly: those default to
+ * var(--ifm-color-primary), which is only remapped to the light-on-dark blue
+ * under [data-theme='dark'] — in light mode it's the darker #0052cc, which is
+ * low-contrast on this dark footer. Use the dark-mode primary (#7dd3fc) so the
+ * column headers match the real dark-mode footer exactly. */
+html:has(.bps-home) .footer {
+  --bps-footer-bg: #0b0e13;
+  --bps-footer-border: #1f2733;
+  --bps-footer-link: #c4ccd8;
+  --bps-footer-copy: #6b7686;
+  --bps-footer-title: #7dd3fc;
+  --bps-footer-link-hover: #7dd3fc;
+}
+
+/* Column titles → strong color + the mono UI accent, echoing the sidebar/nav
+ * category labels (distinguishes headers from items). */
+.footer__title {
+  color: var(--bps-footer-title);
+  font-family: var(--bps-docs-mono);
+  font-size: var(--bps-text-md); font-weight: 700;
+  letter-spacing: 0.09em; text-transform: uppercase;
+}
+/* Link items → quieter, Inter, normal weight. */
+.footer__link-item {
+  color: var(--bps-footer-link);
+  font-size: var(--bps-text-base);
+}
+.footer__link-item:hover { color: var(--bps-footer-link-hover); }
+
+/* Copyright line — Atkinson mono, uppercase, de-emphasized, with extra breathing
+ * room above it. */
+.footer__bottom { margin-top: var(--bps-space-3xl); }
+.footer__copyright,
+.bpsFooterCopy {
+  color: var(--bps-footer-copy);
+  font-family: var(--bps-docs-mono);
+  font-size: var(--bps-text-xs); font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase;
+}
+
+/* ── Image click-to-zoom (medium-zoom) ──────────────────────────────────────
+ * Wired up in src/theme/Root.js, scoped to `.markdown img`. medium-zoom adds
+ * the .medium-zoom-image class to every attached image; hint that they're
+ * interactive with a zoom-in cursor, and lift the overlay above the navbar. */
+.markdown img.medium-zoom-image {
+  cursor: zoom-in;
+}
+.medium-zoom-overlay,
+.medium-zoom-image--opened {
+  z-index: 300;
+}
+
+/* =====================================================================
+ * Blog
+ *
+ * The post header is ours: src/theme/BlogPostItem/Header renders the title, the
+ * date, and — on post pages only — a byline, and hands each a stable class. The
+ * theme's own classes here are hashed CSS-module names, so they are not
+ * something to select on.
+ *
+ * Reading time, tags and "Edit this page" are absent rather than hidden: the
+ * first because showReadingTime is false, the other two because posts carry no
+ * tags and the blog sets no editUrl (see docusaurus.config.js). Nothing here
+ * needs to hide them.
+ * ===================================================================== */
+
+/* Secondary treatment for the date line: the mono metadata
+ * voice used elsewhere in the site (nav links, key caps, footer copyright),
+ * sized by --bps-text-xs, whose own comment names this exact use.
+ *
+ * The colour is a local pair rather than Infima's --ifm-color-content-secondary,
+ * which is unusable here: in dark mode Infima sets it to pure white, brighter
+ * than body text. The --bps-ink-* tokens are no good either — they are defined
+ * once with dark-mode values, for the always-dark navbar and landing page. */
+:root {
+  --bps-blog-meta: #5a6473;
+}
+html[data-theme='dark'] {
+  --bps-blog-meta: #8893a2;
+}
+
+/* (0,2,0) so it beats the theme's own .container {font-size: 0.9rem}, which is
+ * (0,1,0) — a bare .bpsBlogInfo would tie it and leave the winner to stylesheet
+ * order, which is not ours to depend on. */
+.bpsBlogHeader .bpsBlogInfo {
+  font-family: var(--bps-docs-mono);
+  font-size: var(--bps-text-xs);
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--bps-blog-meta);
+}
+
+/* Byline. Deliberately NOT the mono metadata voice above: a person's name is
+ * content, and setting it in the same uppercase mono as the timestamp would
+ * read as a second piece of metadata rather than as the author. Body font,
+ * normal weight, ordinary size.
+ *
+ * The theme gives .bpsBlogInfo a margin-vert--md, so the space above the byline
+ * is already there; only the gap below it needs setting. */
+.bpsBlogHeader .bpsBlogByline {
+  margin-bottom: 1.5rem;
+}
+
+/* Multiple authors stack. Two names run together would be ambiguous about which
+ * title belongs to which, so each gets its own block with a gap between. */
+.bpsBlogHeader .bpsBlogBylineAuthor + .bpsBlogBylineAuthor {
+  margin-top: 0.6rem;
+}
+
+.bpsBlogHeader .bpsBlogBylineName,
+.bpsBlogHeader .bpsBlogBylineTitle {
+  display: block;
+  line-height: 1.35;
+}
+
+.bpsBlogHeader .bpsBlogBylineName {
+  font-size: 1rem;
+  font-weight: 600;
+}
+
+/* Underline on hover only. The name sits directly under the date and above the
+ * body copy; a permanently underlined link there reads as a call to action in a
+ * place where nothing is being asked of the reader. */
+.bpsBlogHeader .bpsBlogBylineName a {
+  color: inherit;
+  text-decoration: none;
+}
+.bpsBlogHeader .bpsBlogBylineName a:hover,
+.bpsBlogHeader .bpsBlogBylineName a:focus-visible {
+  color: inherit;
+  text-decoration: underline;
+}
+
+.bpsBlogHeader .bpsBlogBylineTitle {
+  font-size: var(--bps-text-sm);
+  color: var(--bps-blog-meta);
+}
+
+/* Titles. The theme sets 3rem for both the post <h1> and the list <h2> from one
+ * shared rule; these split them, so the index reads as a list of links rather
+ * than a stack of headlines the same size as the post it links to. Element +
+ * class again, to clear the theme's (0,1,0). */
+h1.bpsBlogTitle {
+  font-size: 2.5rem;
+}
+h2.bpsBlogTitle {
+  font-size: 1.75rem;
+}
+/* Matches the theme's own blog-title breakpoint. Without this the list <h2>
+ * would jump UP to the theme's 2rem on small screens, overtaking its desktop
+ * size. */
+@media (max-width: 576px) {
+  h1.bpsBlogTitle {
+    font-size: 2rem;
+  }
+  h2.bpsBlogTitle {
+    font-size: 1.5rem;
+  }
+}

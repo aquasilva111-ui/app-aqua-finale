@@ -1,0 +1,126 @@
+
+SHELL = /bin/bash
+.SHELLFLAGS = -o pipefail -c
+
+# base path for Lexicon document tree (for lexgen)
+LEXDIR?=./lexicons
+
+# https://github.com/golang/go/wiki/LoopvarExperiment
+export GOEXPERIMENT := loopvar
+
+.PHONY: help
+help: ## Print info about all commands
+	@echo "Commands:"
+	@echo
+	@grep -E '^[a-zA-Z0-9_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "    \033[01;32m%-20s\033[0m %s\n", $$1, $$2}'
+
+.PHONY: build
+build: ## Build all executables
+	go build ./cmd/gosky
+	go build ./cmd/relay
+	go build ./cmd/beemo
+	go build ./cmd/lexgen
+	go build ./cmd/stress
+	go build ./cmd/fakermaker
+	go build ./cmd/hepa
+	go build -o ./sonar-cli ./cmd/sonar
+	go build ./cmd/tap
+
+.PHONY: all
+all: build
+
+.PHONY: test
+test: ## Run tests
+	go test ./...
+
+.PHONY: test-short
+test-short: ## Run tests, skipping slower integration tests
+	go test -test.short ./...
+
+.PHONY: test-interop
+test-interop: ## Run tests, including local interop (requires services running)
+	go clean -testcache && go test -tags=localinterop ./...
+
+.PHONY: test-search
+test-search: ## Run tests, including local search indexing (requires services running)
+	go clean -testcache && go test -tags=localsearch ./...
+
+.PHONY: coverage-html
+coverage-html: ## Generate test coverage report and open in browser
+	go test ./... -coverpkg=./... -coverprofile=test-coverage.out
+	go tool cover -html=test-coverage.out
+
+.PHONY: lint
+lint: ## Verify code style and run static checks
+	go vet ./...
+	test -z $(gofmt -l ./...)
+
+.PHONY: fmt
+fmt: ## Run syntax re-formatting (modify in place)
+	go fmt ./...
+
+.PHONY: check
+check: ## Compile everything, checking syntax (does not output binaries)
+	go build ./...
+
+.PHONY: lexgen
+lexgen: ## Run codegen tool for lexicons (lexicon JSON to Go packages)
+	go run ./cmd/lexgen/ --build-file cmd/lexgen/bsky.json $(LEXDIR)
+
+.PHONY: lexgen-ext
+lexgen-ext: ## Run codegen tool for lexicons (lexicon JSON to Go packages)
+	go run ./cmd/lexgen/ --build-file cmd/lexgen/ext.json $(LEXDIR)
+
+.PHONY: cborgen
+cborgen: ## Run codegen tool for CBOR serialization
+	go run ./gen
+
+.env:
+	if [ ! -f ".env" ]; then cp example.dev.env .env; fi
+
+.PHONY: run-dev-relay
+run-dev-relay: .env ## Runs relay for local dev
+	LOG_LEVEL=info go run ./cmd/relay --admin-password localdev serve
+
+.PHONY: run-dev-ident
+run-dev-ident: .env ## Runs 'bluepages' identity directory for local dev
+	GOLOG_LOG_LEVEL=info go run ./cmd/bluepages serve
+
+.PHONY: build-relay-image
+build-relay-image: ## Builds relay docker image
+	docker build -t relay -f cmd/relay/Dockerfile .
+
+.PHONY: build-relay-admin-ui
+build-relay-admin-ui: ## Build relay admin web UI
+	cd  cmd/relay/relay-admin-ui; yarn install --frozen-lockfile; yarn build
+	mkdir -p public
+	cp -r cmd/relay/relay-admin-ui/dist/* public/
+
+.PHONY: run-relay-image
+run-relay-image:
+	docker run -p 2470:2470 relay /relay serve --admin-password localdev
+# --crawl-insecure-ws
+
+.PHONY: sonar-up
+sonar-up: # Runs sonar docker container
+	docker compose -f cmd/sonar/docker-compose.yml up --build -d || docker-compose -f cmd/sonar/docker-compose.yml up --build -d
+
+.PHONY: run-netsync
+run-netsync: .env ## Runs netsync for local dev
+	go run ./cmd/netsync --checkout-limit 100 --worker-count 100 --out-dir ../netsync-out
+
+SCYLLA_VERSION := latest
+SCYLLA_CPU := 0
+SCYLLA_NODES := 127.0.0.1:9042
+
+.PHONY: run-scylla
+run-scylla:
+	@echo "==> Running test instance of Scylla $(SCYLLA_VERSION)"
+	@docker pull scylladb/scylla:$(SCYLLA_VERSION)
+	@docker run --name scylla -p 9042:9042 --cpuset-cpus=$(SCYLLA_CPU) --memory 1G --rm -d scylladb/scylla:$(SCYLLA_VERSION)
+	@until docker exec scylla cqlsh -e "DESCRIBE SCHEMA"; do sleep 2; done
+
+.PHONY: stop-scylla
+stop-scylla:
+	@echo "==> Stopping test instance of Scylla $(SCYLLA_VERSION)"
+	@docker stop scylla
