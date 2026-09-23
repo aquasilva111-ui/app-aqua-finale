@@ -1,0 +1,13 @@
+[build]
+  base = "social-app-main"
+  command = "pnpm build-web"
+  publish = "social-app-main/dist"
+
+[build.environment]
+  NODE_VERSION = "24"
+
+# SPA fallback: todas as rotas caem no index.html (roteamento client-side)
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
